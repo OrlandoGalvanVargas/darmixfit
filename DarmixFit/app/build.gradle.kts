@@ -39,6 +39,17 @@ android {
     }
 }
 
+androidComponents {
+    onVariants { variant ->
+        val mainOutput = variant.outputs.singleOrNull()
+        if (mainOutput != null) {
+            val vName = android.defaultConfig.versionName ?: "1.0"
+
+            (mainOutput as? com.android.build.api.variant.impl.VariantOutputImpl)?.outputFileName?.set("DarmixFit-v${vName}.apk")
+        }
+    }
+}
+
 composeCompiler {
     stabilityConfigurationFiles.add(rootProject.layout.projectDirectory.file("compose_stability.conf"))
 }
