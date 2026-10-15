@@ -8,11 +8,11 @@ import android.content.Intent
 import android.util.Log
 import androidx.core.content.ContextCompat
 
-/** Punto de entrada para iniciar y cancelar el temporizador de descanso. */
 object RestTimer {
     const val MIN_SECONDS = 5
     const val MAX_SECONDS = 300
     const val DEFAULT_SECONDS = 30
+    const val EXTEND_SECONDS = 15
 
     private const val TAG = "RestTimer"
     private const val ALARM_REQUEST_CODE = 4001
@@ -20,17 +20,18 @@ object RestTimer {
 
     fun start(context: Context, seconds: Int) {
         val app = context.applicationContext
+        DarmixChime.prewarm()
+        SessionNotifier.cancel(app)
         val state = TimerStore.begin(seconds.coerceIn(MIN_SECONDS, MAX_SECONDS))
         scheduleAlarm(app, state.endAtElapsed)
-        try {
-            ContextCompat.startForegroundService(
-                app,
-                TimerService.intent(app, TimerService.ACTION_START)
-            )
-        } catch (e: Exception) {
-            // Si el servicio no arranca, la alarma exacta sigue siendo el respaldo.
-            Log.w(TAG, "No se pudo iniciar el servicio", e)
-        }
+        startService(app)
+    }
+
+    fun extend(context: Context, seconds: Int = EXTEND_SECONDS) {
+        val app = context.applicationContext
+        val state = TimerStore.extend(seconds) ?: return
+        scheduleAlarm(app, state.endAtElapsed)
+        startService(app)
     }
 
     fun cancel(context: Context) {
@@ -38,6 +39,18 @@ object RestTimer {
         TimerStore.cancel()
         cancelAlarm(app)
         app.stopService(Intent(app, TimerService::class.java))
+        SessionNotifier.refresh(app)
+    }
+
+    private fun startService(context: Context) {
+        try {
+            ContextCompat.startForegroundService(
+                context,
+                TimerService.intent(context, TimerService.ACTION_START)
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "No se pudo iniciar el servicio", e)
+        }
     }
 
     @SuppressLint("ScheduleExactAlarm")

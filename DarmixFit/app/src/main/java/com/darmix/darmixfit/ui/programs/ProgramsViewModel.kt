@@ -6,7 +6,7 @@ import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.AP
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
-import com.darmix.darmixfit.FitFlowApp
+import com.darmix.darmixfit.DarmixFitApp
 import com.darmix.darmixfit.data.ProgramEntity
 import com.darmix.darmixfit.data.ProgramTemplate
 import com.darmix.darmixfit.data.RoutineRepository
@@ -29,7 +29,12 @@ class ProgramsViewModel(private val repo: RoutineRepository) : ViewModel() {
     val messages: SharedFlow<UiMessage> = _messages.asSharedFlow()
 
     fun activate(id: Long) {
-        viewModelScope.launch { repo.activateProgram(id) }
+        viewModelScope.launch {
+            repo.activateProgram(id)
+            programs.value.firstOrNull { it.id == id }?.let {
+                _messages.tryEmit(UiMessage("«${it.name}» es tu programa activo", MessageType.SUCCESS))
+            }
+        }
     }
 
     fun addFromTemplate(template: ProgramTemplate, name: String? = null) {
@@ -40,7 +45,10 @@ class ProgramsViewModel(private val repo: RoutineRepository) : ViewModel() {
     }
 
     fun rename(id: Long, name: String) {
-        viewModelScope.launch { repo.renameProgram(id, name) }
+        viewModelScope.launch {
+            repo.renameProgram(id, name)
+            _messages.tryEmit(UiMessage("Nombre actualizado", MessageType.INFO))
+        }
     }
 
     fun delete(program: ProgramEntity) {
@@ -56,7 +64,7 @@ class ProgramsViewModel(private val repo: RoutineRepository) : ViewModel() {
     companion object {
         val Factory: ViewModelProvider.Factory = viewModelFactory {
             initializer {
-                val app = this[APPLICATION_KEY] as FitFlowApp
+                val app = this[APPLICATION_KEY] as DarmixFitApp
                 ProgramsViewModel(app.repository)
             }
         }

@@ -2,40 +2,60 @@ package com.darmix.darmixfit.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// ---- Base oscura ----
-val BackgroundDark = Color(0xFF0E0F11)
-val SurfaceDark = Color(0xFF17181B)
-val SurfaceDarkElevated = Color(0xFF1F2124)
-val SurfaceDarkHigh = Color(0xFF26282C)
-val SurfaceBorder = Color(0xFF2A2C30)
+object DarmixPalette {
+    val Ink950 = Color(0xFF090A08)
+    val Ink900 = Color(0xFF0E100D)
+    val Ink850 = Color(0xFF141612)
+    val Ink800 = Color(0xFF1A1D17)
+    val Ink750 = Color(0xFF21251E)
+    val Ink700 = Color(0xFF2A2F26)
+    val Ink600 = Color(0xFF3A4035)
+    val Ink400 = Color(0xFF6B7266)
+    val Ink300 = Color(0xFF9AA095)
+    val Ink50 = Color(0xFFF4F6F1)
 
-// ---- Base clara (para modo claro del sistema) ----
-val BackgroundLight = Color(0xFFF7F8F6)
-val SurfaceLight = Color(0xFFFFFFFF)
-val SurfaceLightElevated = Color(0xFFF0F1EE)
-val SurfaceLightBorder = Color(0xFFE1E3DE)
+    val Chalk = Color(0xFFF3F2EC)
+    val ChalkSurface = Color(0xFFFFFFFF)
+    val ChalkElevated = Color(0xFFEAE9E1)
+    val ChalkHigh = Color(0xFFE0DFD6)
+    val ChalkBorder = Color(0xFFD5D4CA)
+    val ChalkBorderStrong = Color(0xFFBEBDB2)
+    val Graphite = Color(0xFF151713)
+    val GraphiteSoft = Color(0xFF51554C)
+    val GraphiteMuted = Color(0xFF85897F)
 
-// ---- Acento primario: energía / acción (lima) ----
-val LimeAccent = Color(0xFFC6FF3D)
-val LimeAccentDim = Color(0xFF8FBF2E)
-val LimeAccentContainerDark = Color(0xFF23290C)
-val LimeAccentContainerLight = Color(0xFFE7FFB0)
+    val Volt = Color(0xFFC6FF3D)
+    val VoltBright = Color(0xFFDBFF7A)
+    val VoltDeep = Color(0xFF4E7A00)
+    val VoltInk = Color(0xFF223400)
+    val VoltShadow = Color(0xFF1C2408)
+    val VoltMist = Color(0xFFE6FBB8)
 
-// ---- Acento secundario: en curso / aviso (ámbar) ----
-val AmberAccent = Color(0xFFFFB020)
-val AmberAccentContainerDark = Color(0xFF2E2205)
-val AmberAccentContainerLight = Color(0xFFFFE9BE)
+    val Gold = Color(0xFFFFB627)
+    val GoldDeep = Color(0xFF8F5A00)
+    val GoldInk = Color(0xFF221600)
+    val GoldShadow = Color(0xFF2B1F06)
+    val GoldMist = Color(0xFFFFEBC2)
 
-// ---- Estados ----
-val SuccessGreen = Color(0xFF3DDC84)
-val DangerRed = Color(0xFFFF5C5C)
+    val Tide = Color(0xFF5CD6FF)
+    val TideDeep = Color(0xFF0A6A8F)
+    val TideInk = Color(0xFF001E2B)
+    val TideShadow = Color(0xFF0B1F28)
+    val TideMist = Color(0xFFD6F2FC)
 
-// ---- Texto (oscuro) ----
-val TextPrimaryDark = Color(0xFFF5F6F7)
-val TextSecondaryDark = Color(0xFF9A9DA3)
-val TextTertiaryDark = Color(0xFF616469)
+    val Frost = Color(0xFFB8E3FF)
+    val FrostShadow = Color(0xFF121C24)
 
-// ---- Texto (claro) ----
-val TextPrimaryLight = Color(0xFF17181B)
-val TextSecondaryLight = Color(0xFF5B5E63)
-val TextTertiaryLight = Color(0xFF8A8D92)
+    val Ember = Color(0xFFFF5A3C)
+    val EmberDeep = Color(0xFFC0301A)
+    val EmberInk = Color(0xFF2B0700)
+    val EmberShadow = Color(0xFF2E0F0A)
+    val EmberMist = Color(0xFFFFDDD5)
+
+    val Leaf = Color(0xFF3DDC84)
+    val LeafDeep = Color(0xFF137A43)
+    val LeafShadow = Color(0xFF0D2A19)
+    val LeafMist = Color(0xFFD2F5E1)
+
+    val Scrim = Color(0xCC050604)
+}

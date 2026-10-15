@@ -1,46 +1,53 @@
 package com.darmix.darmixfit.ui
 
+import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.DateRange
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.CalendarViewWeek
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.EditNote
+import androidx.compose.material.icons.rounded.FitnessCenter
+import androidx.compose.material.icons.rounded.Insights
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -50,37 +57,41 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathOperation
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.darmix.darmixfit.data.ProgramEntity
+import com.darmix.darmixfit.ui.components.DarmixIconButton
+import com.darmix.darmixfit.ui.components.Overline
 import com.darmix.darmixfit.ui.edit.EditRoutineScreen
 import com.darmix.darmixfit.ui.history.HistoryScreen
 import com.darmix.darmixfit.ui.programs.ProgramsScreen
 import com.darmix.darmixfit.ui.programs.ProgramsViewModel
+import com.darmix.darmixfit.ui.theme.DarmixShapes
+import com.darmix.darmixfit.ui.theme.DarmixTheme
+import com.darmix.darmixfit.ui.theme.LocalThemeToggle
+import com.darmix.darmixfit.ui.theme.Motion
+import com.darmix.darmixfit.ui.theme.Spacing
 import com.darmix.darmixfit.ui.today.TodayScreen
 import com.darmix.darmixfit.ui.week.WeekScreen
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.PathOperation
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.luminance
-import com.darmix.darmixfit.ui.theme.LocalThemeToggle
-import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
 
@@ -89,16 +100,38 @@ private const val PROGRAMS_ROUTE = "programs"
 private enum class Destination(
     val route: String,
     val label: String,
-    val icon: ImageVector,
+    val icon: ImageVector
 ) {
-    Today("today", "Hoy", Icons.Default.Home),
-    Week("week", "Semana", Icons.Default.DateRange),
-    History("history", "Historial", Icons.Default.CheckCircle),
-    Edit("edit", "Rutina", Icons.Default.Edit),
+    Today("today", "Hoy", Icons.Rounded.FitnessCenter),
+    Week("week", "Semana", Icons.Rounded.CalendarViewWeek),
+    History("history", "Historial", Icons.Rounded.Insights),
+    Edit("edit", "Rutina", Icons.Rounded.EditNote);
+
+    companion object {
+        fun indexOf(route: String?): Int = entries.indexOfFirst { it.route == route }
+    }
+}
+
+private fun AnimatedContentTransitionScope<NavBackStackEntry>.tabDirection(): Int {
+    val from = Destination.indexOf(initialState.destination.route)
+    val to = Destination.indexOf(targetState.destination.route)
+    return if (from < 0 || to < 0 || from == to) 0 else if (to > from) 1 else -1
+}
+
+private fun AnimatedContentTransitionScope<NavBackStackEntry>.tabEnter(): EnterTransition {
+    val direction = tabDirection()
+    return fadeIn(tween(Motion.Standard, easing = Motion.Decelerate)) +
+            slideInHorizontally(tween(Motion.Standard, easing = Motion.Decelerate)) { direction * it / 12 }
+}
+
+private fun AnimatedContentTransitionScope<NavBackStackEntry>.tabExit(): ExitTransition {
+    val direction = tabDirection()
+    return fadeOut(tween(Motion.Quick, easing = Motion.Accelerate)) +
+            slideOutHorizontally(tween(Motion.Quick, easing = Motion.Accelerate)) { -direction * it / 16 }
 }
 
 @Composable
-fun FitFlowNavHost() {
+fun DarmixNavHost() {
     val navController = rememberNavController()
     val programsViewModel: ProgramsViewModel = viewModel(factory = ProgramsViewModel.Factory)
     val programs by programsViewModel.programs.collectAsStateWithLifecycle()
@@ -106,47 +139,51 @@ fun FitFlowNavHost() {
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
     val onProgramsScreen = currentRoute == PROGRAMS_ROUTE
+    val colors = DarmixTheme.colors
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
-        containerColor = MaterialTheme.colorScheme.background,
+        containerColor = colors.canvas,
         topBar = {
             if (onProgramsScreen) {
-                FitFlowTopBar(
-                    title = "Programas",
-                    onBack = { navController.popBackStack() },
+                SectionTopBar(
+                    overline = "Administrar",
+                    title = "PROGRAMAS",
+                    onBack = { navController.popBackStack() }
                 )
             } else {
-                FitFlowProgramHeader(
+                ProgramHeader(
                     programs = programs,
                     onSelect = programsViewModel::activate,
-                    onManage = { navController.navigate(PROGRAMS_ROUTE) },
+                    onManage = { navController.navigate(PROGRAMS_ROUTE) }
                 )
             }
         },
         bottomBar = {
-            FitFlowBottomBar(
-                currentRoute = currentRoute,
-                onNavigate = { destination ->
-                    navController.navigate(destination.route) {
-                        popUpTo(navController.graph.findStartDestination().id) {
-                            saveState = true
+            if (!onProgramsScreen) {
+                DockBar(
+                    selectedIndex = Destination.indexOf(currentRoute),
+                    onNavigate = { destination ->
+                        navController.navigate(destination.route) {
+                            popUpTo(navController.graph.findStartDestination().id) {
+                                saveState = true
+                            }
+                            launchSingleTop = true
+                            restoreState = true
                         }
-                        launchSingleTop = true
-                        restoreState = true
                     }
-                },
-            )
-        },
+                )
+            }
+        }
     ) { innerPadding ->
         NavHost(
             navController = navController,
             startDestination = Destination.Today.route,
             modifier = Modifier.padding(innerPadding),
-            enterTransition = { fadeIn(animationSpec = tween(220)) },
-            exitTransition = { fadeOut(animationSpec = tween(160)) },
-            popEnterTransition = { fadeIn(animationSpec = tween(220)) },
-            popExitTransition = { fadeOut(animationSpec = tween(160)) },
+            enterTransition = { tabEnter() },
+            exitTransition = { tabExit() },
+            popEnterTransition = { tabEnter() },
+            popExitTransition = { tabExit() }
         ) {
             composable(Destination.Today.route) {
                 TodayScreen(onSwitchProgram = { navController.navigate(PROGRAMS_ROUTE) })
@@ -158,29 +195,21 @@ fun FitFlowNavHost() {
             composable(
                 route = PROGRAMS_ROUTE,
                 enterTransition = {
-                    slideInHorizontally(
-                        initialOffsetX = { it },
-                        animationSpec = tween(300),
-                    ) + fadeIn(animationSpec = tween(220))
+                    slideInHorizontally(tween(Motion.Slow, easing = Motion.Emphasized)) { it } +
+                            fadeIn(tween(Motion.Standard))
                 },
                 exitTransition = {
-                    slideOutHorizontally(
-                        targetOffsetX = { -it / 5 },
-                        animationSpec = tween(300),
-                    ) + fadeOut(animationSpec = tween(200))
+                    slideOutHorizontally(tween(Motion.Slow, easing = Motion.Emphasized)) { -it / 5 } +
+                            fadeOut(tween(Motion.Standard))
                 },
                 popEnterTransition = {
-                    slideInHorizontally(
-                        initialOffsetX = { -it / 5 },
-                        animationSpec = tween(300),
-                    ) + fadeIn(animationSpec = tween(220))
+                    slideInHorizontally(tween(Motion.Slow, easing = Motion.Emphasized)) { -it / 5 } +
+                            fadeIn(tween(Motion.Standard))
                 },
                 popExitTransition = {
-                    slideOutHorizontally(
-                        targetOffsetX = { it },
-                        animationSpec = tween(300),
-                    ) + fadeOut(animationSpec = tween(200))
-                },
+                    slideOutHorizontally(tween(Motion.Slow, easing = Motion.Emphasized)) { it } +
+                            fadeOut(tween(Motion.Standard))
+                }
             ) {
                 ProgramsScreen(viewModel = programsViewModel)
             }
@@ -188,62 +217,56 @@ fun FitFlowNavHost() {
     }
 }
 
-// ─────────────────────────────────────────────────────────────
-// Top bar — título + botón de volver (solo en "Programas")
-// ─────────────────────────────────────────────────────────────
-
 @Composable
-private fun FitFlowTopBar(
+private fun SectionTopBar(
+    overline: String,
     title: String,
-    onBack: () -> Unit,
+    onBack: () -> Unit
 ) {
+    val colors = DarmixTheme.colors
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .background(colors.canvas)
             .statusBarsPadding()
-            .padding(horizontal = 8.dp, vertical = 4.dp),
+            .padding(start = Spacing.md, end = Spacing.screen, top = Spacing.sm, bottom = Spacing.sm),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        horizontalArrangement = Arrangement.spacedBy(Spacing.md)
     ) {
-        IconButton(onClick = onBack) {
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                contentDescription = "Volver",
-                tint = MaterialTheme.colorScheme.onSurface,
-            )
-        }
-        Text(
-            text = title,
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onSurface,
+        DarmixIconButton(
+            icon = Icons.AutoMirrored.Rounded.ArrowBack,
+            contentDescription = "Volver",
+            onClick = onBack,
+            size = 44.dp,
+            shape = CircleShape
         )
+        Column {
+            Overline(text = overline, color = colors.voltText)
+            Text(text = title, style = MaterialTheme.typography.headlineMedium, color = colors.textPrimary)
+        }
     }
 }
 
-// ─────────────────────────────────────────────────────────────
-// Header con selector de programa — chip redondeado con punto
-// ─────────────────────────────────────────────────────────────
-
 @Composable
-private fun FitFlowProgramHeader(
+private fun ProgramHeader(
     programs: List<ProgramEntity>,
     onSelect: (Long) -> Unit,
-    onManage: () -> Unit,
+    onManage: () -> Unit
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .background(DarmixTheme.colors.canvas)
             .statusBarsPadding()
-            .padding(horizontal = 16.dp, vertical = 6.dp),
+            .padding(horizontal = Spacing.lg, vertical = Spacing.sm),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        horizontalArrangement = Arrangement.spacedBy(Spacing.sm + 2.dp)
     ) {
         ProgramSelector(
             programs = programs,
             onSelect = onSelect,
             onManage = onManage,
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.weight(1f)
         )
         ThemeToggleButton()
     }
@@ -254,297 +277,305 @@ private fun ProgramSelector(
     programs: List<ProgramEntity>,
     onSelect: (Long) -> Unit,
     onManage: () -> Unit,
-    modifier: Modifier = Modifier,   // ← nuevo
+    modifier: Modifier = Modifier
 ) {
+    val colors = DarmixTheme.colors
+    val haptic = LocalHapticFeedback.current
     var expanded by remember { mutableStateOf(false) }
     val active = programs.firstOrNull { it.isActive }
+    val arrowRotation by animateFloatAsState(
+        targetValue = if (expanded) 180f else 0f,
+        animationSpec = Motion.snappy(),
+        label = "selector-arrow"
+    )
 
-    Box(modifier = modifier) {   // ← pasar modifier al Box
+    Box(modifier = modifier) {
         Row(
             modifier = Modifier
-                .clip(RoundedCornerShape(50))
-                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                .border(
-                    width = 1.dp,
-                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.35f),
-                    shape = RoundedCornerShape(50),
-                )
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                ) { expanded = true }
-                .padding(horizontal = 12.dp, vertical = 8.dp),
+                .clip(DarmixShapes.Pill)
+                .background(colors.card)
+                .border(1.dp, if (expanded) colors.voltText.copy(alpha = 0.6f) else colors.hairline, DarmixShapes.Pill)
+                .clickable(role = Role.DropdownList) {
+                    haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                    expanded = true
+                }
+                .padding(start = 6.dp, end = Spacing.md, top = 6.dp, bottom = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(Spacing.sm + 2.dp)
         ) {
-            // Punto lima indicando "programa activo"
             Box(
                 modifier = Modifier
-                    .size(8.dp)
-                    .background(MaterialTheme.colorScheme.primary, CircleShape),
-            )
-            Text(
-                text = active?.name ?: "Sin programa",
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.weight(1f, fill = false),
-            )
+                    .size(32.dp)
+                    .clip(CircleShape)
+                    .background(colors.volt),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Rounded.FitnessCenter,
+                    contentDescription = null,
+                    tint = colors.onVolt,
+                    modifier = Modifier.size(17.dp)
+                )
+            }
+            Column(modifier = Modifier.weight(1f, fill = false)) {
+                Overline(text = "Programa", color = colors.textTertiary)
+                Text(
+                    text = active?.name ?: "Sin programa",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = colors.textPrimary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
             Icon(
-                imageVector = Icons.Default.ArrowDropDown,
+                Icons.Rounded.KeyboardArrowDown,
                 contentDescription = "Cambiar programa",
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(18.dp),
+                tint = colors.textSecondary,
+                modifier = Modifier
+                    .size(20.dp)
+                    .graphicsLayer { rotationZ = arrowRotation }
             )
         }
 
         DropdownMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false },
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            shape = DarmixShapes.Card,
+            containerColor = colors.cardRaised,
+            border = BorderStroke(1.dp, colors.hairline),
+            shadowElevation = 12.dp,
+            tonalElevation = 0.dp
         ) {
+            Overline(
+                text = "Cambiar programa",
+                color = colors.textTertiary,
+                modifier = Modifier.padding(horizontal = Spacing.lg, vertical = Spacing.sm)
+            )
             programs.forEach { program ->
                 DropdownMenuItem(
                     text = {
                         Text(
                             text = program.name,
-                            color = if (program.isActive) MaterialTheme.colorScheme.primary
-                            else MaterialTheme.colorScheme.onSurface,
-                            fontWeight = if (program.isActive) FontWeight.SemiBold
-                            else FontWeight.Normal,
+                            style = MaterialTheme.typography.titleSmall,
+                            color = if (program.isActive) colors.voltText else colors.textPrimary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     },
-                    onClick = {
-                        expanded = false
-                        if (!program.isActive) onSelect(program.id)
+                    leadingIcon = {
+                        Box(
+                            modifier = Modifier
+                                .size(10.dp)
+                                .clip(CircleShape)
+                                .background(if (program.isActive) colors.voltText else colors.hairlineStrong)
+                        )
                     },
                     trailingIcon = {
                         if (program.isActive) {
-                            Icon(
-                                imageVector = Icons.Default.Check,
-                                contentDescription = "Activo",
-                                tint = MaterialTheme.colorScheme.primary,
-                            )
+                            Icon(Icons.Rounded.Check, contentDescription = "Activo", tint = colors.voltText)
                         }
                     },
+                    onClick = {
+                        expanded = false
+                        if (!program.isActive) {
+                            haptic.performHapticFeedback(HapticFeedbackType.Confirm)
+                            onSelect(program.id)
+                        }
+                    }
                 )
             }
             HorizontalDivider(
-                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
+                color = colors.hairline,
+                modifier = Modifier.padding(vertical = Spacing.xs)
             )
             DropdownMenuItem(
-                text = { Text("Administrar programas…") },
+                text = {
+                    Text(
+                        text = "Administrar programas",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = colors.textPrimary
+                    )
+                },
+                leadingIcon = {
+                    Icon(Icons.Rounded.Tune, contentDescription = null, tint = colors.textSecondary)
+                },
                 onClick = {
                     expanded = false
                     onManage()
-                },
+                }
             )
         }
     }
 }
 
-// ─────────────────────────────────────────────────────────────
-// Bottom bar custom con pill de acento detrás del icono activo
-// ─────────────────────────────────────────────────────────────
-
 @Composable
-private fun FitFlowBottomBar(
-    currentRoute: String?,
-    onNavigate: (Destination) -> Unit,
+private fun DockBar(
+    selectedIndex: Int,
+    onNavigate: (Destination) -> Unit
 ) {
-    Surface(
-        color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 0.dp,
+    val colors = DarmixTheme.colors
+    val haptic = LocalHapticFeedback.current
+    val accent = MaterialTheme.colorScheme.primary
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(colors.canvas)
+            .navigationBarsPadding()
+            .padding(start = Spacing.lg, end = Spacing.lg, top = Spacing.xs, bottom = Spacing.sm)
     ) {
-        Row(
+        BoxWithConstraints(
             modifier = Modifier
                 .fillMaxWidth()
-                .navigationBarsPadding()
-                .padding(horizontal = 12.dp, vertical = 6.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.CenterVertically,
+                .height(68.dp)
+                .clip(DarmixShapes.Hero)
+                .background(colors.card)
+                .border(1.dp, colors.hairline, DarmixShapes.Hero)
+                .padding(6.dp)
         ) {
-            Destination.entries.forEach { destination ->
-                FitFlowNavItem(
-                    destination = destination,
-                    selected = currentRoute == destination.route,
-                    onClick = { onNavigate(destination) },
-                    modifier = Modifier.weight(1f),
+            val itemWidth = maxWidth / Destination.entries.size
+            val indicatorOffset by animateDpAsState(
+                targetValue = itemWidth * selectedIndex.coerceAtLeast(0),
+                animationSpec = Motion.slideDp(),
+                label = "dock-indicator"
+            )
+            if (selectedIndex >= 0) {
+                Box(
+                    modifier = Modifier
+                        .offset(x = indicatorOffset)
+                        .width(itemWidth)
+                        .fillMaxHeight()
+                        .clip(DarmixShapes.Card)
+                        .background(accent)
                 )
+            }
+            Row(modifier = Modifier.fillMaxSize()) {
+                Destination.entries.forEachIndexed { index, destination ->
+                    DockItem(
+                        destination = destination,
+                        selected = index == selectedIndex,
+                        onClick = {
+                            if (index != selectedIndex) {
+                                haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                                onNavigate(destination)
+                            }
+                        },
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                    )
+                }
             }
         }
     }
 }
 
 @Composable
-private fun FitFlowNavItem(
+private fun DockItem(
     destination: Destination,
     selected: Boolean,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier,
+    modifier: Modifier = Modifier
 ) {
-    val haptics = LocalHapticFeedback.current
-
-    val iconColor by animateColorAsState(
-        targetValue = if (selected) MaterialTheme.colorScheme.onPrimary
-        else MaterialTheme.colorScheme.onSurfaceVariant,
-        animationSpec = tween(durationMillis = 220),
-        label = "nav-icon-color",
+    val colors = DarmixTheme.colors
+    val content by animateColorAsState(
+        targetValue = if (selected) MaterialTheme.colorScheme.onPrimary else colors.textSecondary,
+        animationSpec = tween(Motion.Standard),
+        label = "dock-content"
     )
-    val labelColor by animateColorAsState(
-        targetValue = if (selected) MaterialTheme.colorScheme.primary
-        else MaterialTheme.colorScheme.onSurfaceVariant,
-        animationSpec = tween(durationMillis = 220),
-        label = "nav-label-color",
+    val scale by animateFloatAsState(
+        targetValue = if (selected) 1.06f else 1f,
+        animationSpec = Motion.bouncy(),
+        label = "dock-scale"
     )
-    val pillColor by animateColorAsState(
-        targetValue = if (selected) MaterialTheme.colorScheme.primary
-        else MaterialTheme.colorScheme.primary.copy(alpha = 0f),
-        animationSpec = tween(durationMillis = 220),
-        label = "nav-pill-color",
-    )
-    // Pequeño "pop" del icono activo.
-    val iconScale by animateFloatAsState(
-        targetValue = if (selected) 1.08f else 1f,
-        animationSpec = tween(durationMillis = 220),
-        label = "nav-icon-scale",
-    )
-
     Column(
         modifier = modifier
-            .clip(RoundedCornerShape(16.dp))
+            .clip(DarmixShapes.Card)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
-            ) {
-                if (!selected) {
-                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                    onClick()
-                }
-            }
-            .padding(vertical = 6.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
-        Box(
-            modifier = Modifier
-                .width(52.dp)
-                .height(32.dp)
-                .clip(RoundedCornerShape(50))
-                .background(pillColor),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                imageVector = destination.icon,
-                contentDescription = destination.label,
-                tint = iconColor,
-                modifier = Modifier
-                    .size(22.dp)
-                    .graphicsLayer {
-                        scaleX = iconScale
-                        scaleY = iconScale
-                    },
+                role = Role.Tab,
+                onClick = onClick
             )
-        }
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            },
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Icon(
+            imageVector = destination.icon,
+            contentDescription = destination.label,
+            tint = content,
+            modifier = Modifier.size(22.dp)
+        )
         Text(
             text = destination.label,
             style = MaterialTheme.typography.labelMedium,
-            color = labelColor,
+            color = content,
+            maxLines = 1
         )
     }
 }
 
 @Composable
 private fun ThemeToggleButton() {
+    val colors = DarmixTheme.colors
     val toggle = LocalThemeToggle.current
-    val haptics = LocalHapticFeedback.current
-    val isDark = isSystemInDarkTheme()  // ← se usa solo para dibujar el ícono "actual"
-    val actualDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
-    val scheme = MaterialTheme.colorScheme
+    val haptic = LocalHapticFeedback.current
+    val night by animateFloatAsState(
+        targetValue = if (colors.isDark) 1f else 0f,
+        animationSpec = tween(Motion.Slow, easing = Motion.Emphasized),
+        label = "theme-morph"
+    )
+    val iconColor = colors.textPrimary
 
     Box(
         modifier = Modifier
-            .size(44.dp)
+            .size(48.dp)
             .clip(CircleShape)
-            .background(scheme.surfaceContainerHigh)
-            .border(
-                width = 1.dp,
-                color = scheme.outline.copy(alpha = 0.35f),
-                shape = CircleShape,
-            )
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-            ) {
-                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+            .background(colors.card)
+            .border(1.dp, colors.hairline, CircleShape)
+            .clickable(role = Role.Button) {
+                haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                 toggle()
             },
-        contentAlignment = Alignment.Center,
+        contentAlignment = Alignment.Center
     ) {
-        ThemeToggleIcon(
-            isDark = actualDark,
-            modifier = Modifier.size(20.dp),
-        )
-    }
-}
-
-@Composable
-private fun ThemeToggleIcon(
-    isDark: Boolean,
-    modifier: Modifier = Modifier,
-) {
-    val color = MaterialTheme.colorScheme.onSurface
-    val stroke = 2.dp
-
-    Canvas(modifier = modifier) {
-        val c = center
-        val r = size.minDimension / 2f
-
-        if (isDark) {
-            // ── Luna creciente ──
-            val outer = Path().apply {
-                addOval(Rect(center = c, radius = r * 0.85f))
-            }
-            val inner = Path().apply {
-                addOval(
-                    Rect(
-                        center = c + Offset(r * 0.55f, -r * 0.35f),
-                        radius = r * 0.82f,
+        Canvas(modifier = Modifier.size(22.dp)) {
+            val n = night
+            val c = center
+            val r = size.minDimension / 2f
+            rotate(degrees = -40f * n, pivot = c) {
+                val bodyRadius = r * (0.42f + 0.40f * n)
+                val body = Path().apply { addOval(Rect(c, bodyRadius)) }
+                val bite = Path().apply {
+                    val travel = 1f - n
+                    addOval(
+                        Rect(
+                            c + Offset(r * (0.55f + travel * 1.2f), -r * (0.35f + travel * 0.8f)),
+                            r * 0.80f
+                        )
                     )
-                )
+                }
+                drawPath(Path().apply { op(body, bite, PathOperation.Difference) }, iconColor)
             }
-            val crescent = Path().apply {
-                op(outer, inner, PathOperation.Difference)
-            }
-            drawPath(path = crescent, color = color)
-        } else {
-            // ── Sol con 8 rayos ──
-            drawCircle(
-                color = color,
-                radius = r * 0.42f,
-                center = c,
-            )
-            val rayStart = r * 0.62f
-            val rayEnd = r * 0.92f
-            for (i in 0 until 8) {
-                val angle = i * (PI / 4.0)
-                val start = Offset(
-                    x = c.x + (cos(angle) * rayStart).toFloat(),
-                    y = c.y + (sin(angle) * rayStart).toFloat(),
-                )
-                val end = Offset(
-                    x = c.x + (cos(angle) * rayEnd).toFloat(),
-                    y = c.y + (sin(angle) * rayEnd).toFloat(),
-                )
-                drawLine(
-                    color = color,
-                    start = start,
-                    end = end,
-                    strokeWidth = stroke.toPx(),
-                    cap = StrokeCap.Round,
-                )
+            val rayAlpha = (1f - n * 1.6f).coerceIn(0f, 1f)
+            if (rayAlpha > 0f) {
+                val start = r * (0.62f + 0.12f * n)
+                val end = r * (0.95f - 0.15f * n)
+                for (i in 0 until 8) {
+                    val angle = i * Math.PI / 4.0 + n * 0.6
+                    val dir = Offset(cos(angle).toFloat(), sin(angle).toFloat())
+                    drawLine(
+                        color = iconColor.copy(alpha = rayAlpha),
+                        start = c + dir * start,
+                        end = c + dir * end,
+                        strokeWidth = 2.dp.toPx(),
+                        cap = StrokeCap.Round
+                    )
+                }
             }
         }
     }

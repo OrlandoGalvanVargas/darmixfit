@@ -4,11 +4,18 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,39 +25,42 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.AddPhotoAlternate
+import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.HideImage
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.material.icons.rounded.KeyboardArrowUp
+import androidx.compose.material.icons.rounded.Link
+import androidx.compose.material.icons.rounded.LinkOff
+import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material.icons.rounded.Repeat
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -58,41 +68,85 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.PathOperation
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.darmix.darmixfit.data.ExerciseCatalog
 import com.darmix.darmixfit.data.ExerciseEntity
+import com.darmix.darmixfit.ui.common.DarmixToastHost
+import com.darmix.darmixfit.ui.common.showToast
+import com.darmix.darmixfit.ui.components.DarmixButton
+import com.darmix.darmixfit.ui.components.DarmixConfirmDialog
+import com.darmix.darmixfit.ui.components.DarmixButtonStyle
+import com.darmix.darmixfit.ui.components.DarmixIconButton
+import com.darmix.darmixfit.ui.components.DarmixSheet
+import com.darmix.darmixfit.ui.components.DarmixTextField
 import com.darmix.darmixfit.ui.components.ExerciseImage
-import com.darmix.darmixfit.ui.theme.DangerRed
+import com.darmix.darmixfit.ui.components.InfoChip
+import com.darmix.darmixfit.ui.components.NumberStepper
+import com.darmix.darmixfit.ui.components.Overline
+import com.darmix.darmixfit.ui.components.SelectChip
+import com.darmix.darmixfit.ui.components.SkeletonBlock
+import com.darmix.darmixfit.ui.components.StatusTag
+import com.darmix.darmixfit.ui.theme.DarmixShapes
+import com.darmix.darmixfit.ui.theme.DarmixTextStyles
+import com.darmix.darmixfit.ui.theme.DarmixTheme
+import com.darmix.darmixfit.ui.theme.Motion
+import com.darmix.darmixfit.ui.theme.Spacing
 import java.time.DayOfWeek
+import java.time.LocalDate
 import java.time.format.TextStyle
 import java.util.Locale
 
-private val LOCALE_ES_MX = Locale.forLanguageTag("es-MX")
+private val MexicoLocale: Locale = Locale.forLanguageTag("es-MX")
+private val DayLetters = listOf("L", "M", "X", "J", "V", "S", "D")
+private val RailWidth = 36.dp
+private val RepPresets = listOf("6-8 reps", "8-12 reps", "10-12 reps", "12-15 reps", "15-20 reps", "Al fallo", "30 segundos")
+private val TitlePresets = listOf("Empuje", "Tirón", "Pierna", "Torso", "Cuerpo completo", "Brazos", "Core", "Descanso")
 
 private sealed interface FormTarget {
     data object Add : FormTarget
     data class Edit(val exercise: ExerciseEntity) : FormTarget
 }
 
+private data class ExerciseActions(
+    val onEdit: (ExerciseEntity) -> Unit,
+    val onDelete: (ExerciseEntity) -> Unit,
+    val onPickImage: (ExerciseEntity) -> Unit,
+    val onRemoveImage: (ExerciseEntity) -> Unit,
+    val onRestoreImage: (ExerciseEntity) -> Unit
+)
+
 @Composable
 fun EditRoutineScreen(
     modifier: Modifier = Modifier,
-    viewModel: EditRoutineViewModel = viewModel(factory = EditRoutineViewModel.Factory),
+    viewModel: EditRoutineViewModel = viewModel(factory = EditRoutineViewModel.Factory)
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val colors = DarmixTheme.colors
 
     var form by remember { mutableStateOf<FormTarget?>(null) }
     var toDelete by remember { mutableStateOf<ExerciseEntity?>(null) }
     var editingTitle by remember { mutableStateOf(false) }
 
     var pendingImageFor by rememberSaveable { mutableStateOf<Long?>(null) }
-    val imagePicker = rememberLauncherForActivityResult(
-        ActivityResultContracts.PickVisualMedia()
-    ) { uri: Uri? ->
+    val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri: Uri? ->
         val id = pendingImageFor
         if (uri != null && id != null) viewModel.setImage(id, uri)
         pendingImageFor = null
@@ -100,96 +154,113 @@ fun EditRoutineScreen(
 
     val snackbarHostState = remember { SnackbarHostState() }
     LaunchedEffect(Unit) {
-        viewModel.messages.collect { snackbarHostState.showSnackbar(it) }
+        viewModel.messages.collect { snackbarHostState.showToast(it) }
     }
 
-    val exerciseCount = state.entries.sumOf { if (it.size == 1) 1 else it.size }
+    val listState = rememberLazyListState()
+    val fabExpanded by remember { derivedStateOf { listState.firstVisibleItemIndex < 2 } }
 
-    Box(modifier = modifier.fillMaxSize()) {
+    val actions = remember(viewModel) {
+        ExerciseActions(
+            onEdit = { form = FormTarget.Edit(it) },
+            onDelete = { toDelete = it },
+            onPickImage = {
+                pendingImageFor = it.id
+                imagePicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+            },
+            onRemoveImage = { viewModel.removeImage(it.id) },
+            onRestoreImage = viewModel::restoreImage
+        )
+    }
+
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(colors.canvas)
+    ) {
         LazyColumn(
+            state = listState,
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 112.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            contentPadding = PaddingValues(start = Spacing.screen, end = Spacing.screen, top = Spacing.md, bottom = 120.dp)
         ) {
-            item(key = "days") {
-                DaySelector(selected = state.selectedDay, onSelect = viewModel::selectDay)
+            item(key = "days", contentType = "days") {
+                DayBoard(
+                    selected = state.selectedDay,
+                    counts = state.dayCounts,
+                    onSelect = viewModel::selectDay
+                )
             }
-
-            item(key = "header") {
+            item(key = "header", contentType = "header") {
                 DayHeader(
-                    dayOfWeek = state.selectedDay,
-                    title = state.dayTitle,
-                    exerciseCount = exerciseCount,
-                    onEditTitle = { editingTitle = true },
+                    state = state,
+                    onEditTitle = { editingTitle = true }
                 )
             }
 
             when {
-                state.loading -> item(key = "loading") {
-                    Text(
-                        text = "Cargando rutina…",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(vertical = 8.dp),
-                    )
+                state.loading -> items(count = 3, key = { "skeleton-$it" }, contentType = { "skeleton" }) {
+                    SkeletonBlock(height = 110.dp, modifier = Modifier.padding(bottom = Spacing.md))
                 }
 
-                state.entries.isEmpty() -> item(key = "empty") {
-                    EmptyDayCard()
+                state.entries.isEmpty() -> item(key = "empty-${state.selectedDay}", contentType = "empty") {
+                    EmptyDay(onAdd = { form = FormTarget.Add })
                 }
 
                 else -> itemsIndexed(
                     items = state.entries,
                     key = { _, entry -> entry.first().id },
+                    contentType = { _, entry -> if (entry.size > 1) "superset" else "single" }
                 ) { index, entry ->
-                    val hasNext = index < state.entries.lastIndex
                     val anchor = entry.first()
-                    EntryCard(
-                        entry = entry,
-                        canMoveUp = index > 0,
-                        canMoveDown = hasNext,
-                        onMoveUp = { viewModel.move(anchor, up = true) },
-                        onMoveDown = { viewModel.move(anchor, up = false) },
-                        onLinkWithNext = if (hasNext) ({ viewModel.linkWithNext(anchor) }) else null,
-                        onUnlink = { viewModel.unlink(anchor) },
-                        onEdit = { form = FormTarget.Edit(it) },
-                        onDelete = { toDelete = it },
-                        onPickImage = {
-                            pendingImageFor = it.id
-                            imagePicker.launch(
-                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                    val hasNext = index < state.entries.lastIndex
+                    Column(modifier = Modifier.animateItem()) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            OrderRail(
+                                number = index + 1,
+                                canMoveUp = index > 0,
+                                canMoveDown = hasNext,
+                                onMoveUp = { viewModel.move(anchor, up = true) },
+                                onMoveDown = { viewModel.move(anchor, up = false) }
                             )
-                        },
-                        onRemoveImage = { viewModel.removeImage(it.id) },
-                    )
+                            Spacer(Modifier.width(Spacing.sm))
+                            Box(modifier = Modifier.weight(1f)) {
+                                if (entry.size > 1) {
+                                    SupersetCard(
+                                        members = entry,
+                                        onUnlink = { viewModel.unlink(anchor) },
+                                        actions = actions
+                                    )
+                                } else {
+                                    SingleCard(exercise = anchor, actions = actions)
+                                }
+                            }
+                        }
+                        if (hasNext) {
+                            LinkConnector(onLink = { viewModel.linkWithNext(anchor) })
+                        }
+                    }
                 }
             }
         }
 
-        SnackbarHost(
+        DarmixToastHost(
             hostState = snackbarHostState,
             modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(bottom = 92.dp, start = 16.dp, end = 16.dp),
+                .align(Alignment.TopCenter)
+                .padding(top = Spacing.sm)
         )
 
-        ExtendedFloatingActionButton(
+        AddFab(
+            expanded = fabExpanded,
             onClick = { form = FormTarget.Add },
             modifier = Modifier
                 .align(Alignment.BottomEnd)
-                .padding(16.dp),
-            containerColor = MaterialTheme.colorScheme.primary,
-            contentColor = MaterialTheme.colorScheme.onPrimary,
-        ) {
-            Icon(Icons.Default.Add, contentDescription = null)
-            Spacer(Modifier.width(8.dp))
-            Text("Agregar ejercicio", fontWeight = FontWeight.Bold)
-        }
+                .padding(Spacing.screen)
+        )
     }
 
     form?.let { target ->
-        ExerciseFormDialog(
-            title = if (target is FormTarget.Edit) "Editar ejercicio" else "Nuevo ejercicio",
+        ExerciseSheet(
             initial = (target as? FormTarget.Edit)?.exercise,
             onSave = { name, sets, reps, note ->
                 when (target) {
@@ -198,287 +269,271 @@ fun EditRoutineScreen(
                 }
                 form = null
             },
-            onDismiss = { form = null },
+            onDismiss = { form = null }
         )
     }
 
     toDelete?.let { exercise ->
-        DeleteExerciseDialog(
-            exercise = exercise,
+        DarmixConfirmDialog(
+            title = "¿Eliminar ejercicio?",
+            message = "Se borrará «${exercise.name}» junto con su progreso registrado y su imagen. " +
+                    "Si está en una superserie de dos, el otro ejercicio quedará suelto.",
+            confirmLabel = "Eliminar",
+            icon = Icons.Rounded.DeleteOutline,
             onConfirm = {
                 viewModel.deleteExercise(exercise)
                 toDelete = null
             },
-            onDismiss = { toDelete = null },
+            onDismiss = { toDelete = null }
         )
     }
 
     if (editingTitle) {
-        TitleDialog(
+        TitleSheet(
             initial = state.dayTitle,
             onSave = {
                 viewModel.updateDayTitle(it)
                 editingTitle = false
             },
-            onDismiss = { editingTitle = false },
+            onDismiss = { editingTitle = false }
         )
     }
 }
 
-// ─────────────────────────────────────────────────────────────
-// Selector de día — pills custom scrollables
-// ─────────────────────────────────────────────────────────────
-
 @Composable
-private fun DaySelector(selected: Int, onSelect: (Int) -> Unit) {
+private fun DayBoard(selected: Int, counts: List<Int>, onSelect: (Int) -> Unit) {
+    val today = remember { LocalDate.now().dayOfWeek.value }
     Row(
-        modifier = Modifier.horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = Spacing.xs, bottom = Spacing.lg),
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        (1..7).forEach { dow ->
-            DayPill(
-                label = DayOfWeek.of(dow)
-                    .getDisplayName(TextStyle.SHORT, LOCALE_ES_MX)
-                    .trimEnd('.')
-                    .replaceFirstChar { it.uppercase() },
+        for (dow in 1..7) {
+            DayTile(
+                letter = DayLetters[dow - 1],
+                count = counts.getOrElse(dow - 1) { 0 },
                 selected = dow == selected,
+                isToday = dow == today,
                 onClick = { onSelect(dow) },
+                modifier = Modifier.weight(1f)
             )
         }
     }
 }
 
 @Composable
-private fun DayPill(
-    label: String,
+private fun DayTile(
+    letter: String,
+    count: Int,
     selected: Boolean,
+    isToday: Boolean,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
+    val colors = DarmixTheme.colors
+    val haptic = LocalHapticFeedback.current
     val primary = MaterialTheme.colorScheme.primary
     val onPrimary = MaterialTheme.colorScheme.onPrimary
-    val outline = MaterialTheme.colorScheme.outline
-
-    Box(
-        modifier = Modifier
-            .clip(RoundedCornerShape(50))
-            .background(if (selected) primary else MaterialTheme.colorScheme.surfaceContainerHigh)
-            .border(
-                width = 1.dp,
-                color = if (selected) primary else outline.copy(alpha = 0.35f),
-                shape = RoundedCornerShape(50),
-            )
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = onClick,
-            )
-            .padding(horizontal = 18.dp, vertical = 10.dp),
+    val background by animateColorAsState(
+        targetValue = if (selected) primary else colors.card,
+        animationSpec = Motion.snappy(),
+        label = "tile-bg"
+    )
+    val content = if (selected) onPrimary else colors.textPrimary
+    val shape = RoundedCornerShape(16.dp)
+    Column(
+        modifier = modifier
+            .height(72.dp)
+            .clip(shape)
+            .background(background)
+            .border(1.dp, if (selected) primary else colors.hairline, shape)
+            .clickable(role = Role.Tab) {
+                if (!selected) haptic.performHapticFeedback(HapticFeedbackType.SegmentTick)
+                onClick()
+            }
+            .padding(vertical = Spacing.sm),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.SpaceBetween
     ) {
         Text(
-            text = label,
-            style = MaterialTheme.typography.labelMedium,
-            fontWeight = FontWeight.Bold,
-            color = if (selected) onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+            text = letter,
+            style = MaterialTheme.typography.labelSmall,
+            color = if (selected) onPrimary.copy(alpha = 0.8f) else colors.textTertiary
+        )
+        if (count > 0) {
+            Text(text = "$count", style = DarmixTextStyles.MetricSmall.copy(fontSize = DarmixTextStyles.MetricSmall.fontSize * 0.85f), color = content)
+        } else {
+            Crescent(color = if (selected) onPrimary else colors.tide, size = 16.dp)
+        }
+        Box(
+            modifier = Modifier
+                .size(4.dp)
+                .clip(CircleShape)
+                .background(if (isToday) (if (selected) onPrimary else colors.voltText) else Color.Transparent)
         )
     }
 }
 
-// ─────────────────────────────────────────────────────────────
-// Header del día
-// ─────────────────────────────────────────────────────────────
-
 @Composable
-private fun DayHeader(
-    dayOfWeek: Int,
-    title: String,
-    exerciseCount: Int,
-    onEditTitle: () -> Unit,
-) {
-    val dayName = DayOfWeek.of(dayOfWeek)
-        .getDisplayName(TextStyle.FULL, LOCALE_ES_MX)
-        .replaceFirstChar { it.uppercase() }
-
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Text(
-                text = dayName,
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.weight(1f),
-            )
-            CountChip(
-                text = when (exerciseCount) {
-                    0 -> "DESCANSO"
-                    1 -> "1 EJERCICIO"
-                    else -> "$exerciseCount EJERCICIOS"
-                },
-                muted = exerciseCount == 0,
-            )
-        }
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            Text(
-                text = title.ifBlank { "Sin título" },
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
-            )
+private fun DayHeader(state: EditUiState, onEditTitle: () -> Unit) {
+    val colors = DarmixTheme.colors
+    val dayName = remember(state.selectedDay) {
+        DayOfWeek.of(state.selectedDay).getDisplayName(TextStyle.FULL, MexicoLocale).uppercase(MexicoLocale)
+    }
+    Column(
+        modifier = Modifier.padding(bottom = Spacing.lg),
+        verticalArrangement = Arrangement.spacedBy(Spacing.sm)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
             Box(
-                modifier = Modifier
-                    .size(32.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = onEditTitle,
-                    ),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Edit,
-                    contentDescription = "Editar título del día",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(15.dp),
-                )
+                Modifier
+                    .size(width = 16.dp, height = 3.dp)
+                    .background(colors.voltText, CircleShape)
+            )
+            Overline(text = "Editor de rutina", color = colors.textSecondary)
+        }
+        Text(text = dayName, style = MaterialTheme.typography.displaySmall, color = colors.textPrimary)
+        Row(
+            modifier = Modifier
+                .clip(DarmixShapes.Control)
+                .clickable(role = Role.Button, onClick = onEditTitle)
+                .padding(vertical = Spacing.xs),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
+        ) {
+            Text(
+                text = state.dayTitle.ifBlank { "Agregar título del día" },
+                style = MaterialTheme.typography.titleMedium,
+                color = if (state.dayTitle.isBlank()) colors.voltText else colors.textSecondary,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false)
+            )
+            Icon(Icons.Rounded.Edit, contentDescription = "Editar título", tint = colors.textTertiary, modifier = Modifier.size(16.dp))
+        }
+        if (!state.loading && state.exerciseCount > 0) {
+            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.xs + 2.dp)) {
+                InfoChip(text = if (state.exerciseCount == 1) "1 ejercicio" else "${state.exerciseCount} ejercicios", content = colors.textPrimary)
+                InfoChip(text = "${state.totalSets} series", content = colors.voltText)
+                if (state.supersetCount > 0) {
+                    InfoChip(
+                        text = if (state.supersetCount == 1) "1 superserie" else "${state.supersetCount} superseries",
+                        content = colors.tideText
+                    )
+                }
             }
         }
     }
 }
 
 @Composable
-private fun CountChip(text: String, muted: Boolean) {
-    val bg = if (muted) MaterialTheme.colorScheme.surfaceContainerHighest
-    else MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
-    val fg = if (muted) MaterialTheme.colorScheme.onSurfaceVariant
-    else MaterialTheme.colorScheme.primary
-    Box(
-        modifier = Modifier
-            .background(bg, RoundedCornerShape(50))
-            .padding(horizontal = 10.dp, vertical = 4.dp),
-    ) {
-        Text(
-            text = text,
-            style = MaterialTheme.typography.labelMedium,
-            fontWeight = FontWeight.Bold,
-            color = fg,
-        )
-    }
-}
-
-// ─────────────────────────────────────────────────────────────
-// Entry card (single o superserie)
-// ─────────────────────────────────────────────────────────────
-
-@Composable
-private fun EntryCard(
-    entry: List<ExerciseEntity>,
+private fun OrderRail(
+    number: Int,
     canMoveUp: Boolean,
     canMoveDown: Boolean,
     onMoveUp: () -> Unit,
-    onMoveDown: () -> Unit,
-    onLinkWithNext: (() -> Unit)?,
-    onUnlink: () -> Unit,
-    onEdit: (ExerciseEntity) -> Unit,
-    onDelete: (ExerciseEntity) -> Unit,
-    onPickImage: (ExerciseEntity) -> Unit,
-    onRemoveImage: (ExerciseEntity) -> Unit,
+    onMoveDown: () -> Unit
 ) {
-    val isSuperset = entry.size > 1
-    val secondary = MaterialTheme.colorScheme.secondary
-    val outline = MaterialTheme.colorScheme.outline
+    val colors = DarmixTheme.colors
+    Column(
+        modifier = Modifier.width(RailWidth),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        RailArrow(icon = Icons.Rounded.KeyboardArrowUp, description = "Subir", enabled = canMoveUp, onClick = onMoveUp)
+        Text(
+            text = number.toString().padStart(2, '0'),
+            style = MaterialTheme.typography.headlineSmall,
+            color = colors.textTertiary
+        )
+        RailArrow(icon = Icons.Rounded.KeyboardArrowDown, description = "Bajar", enabled = canMoveDown, onClick = onMoveDown)
+    }
+}
 
-    val borderColor = if (isSuperset) secondary.copy(alpha = 0.4f) else outline.copy(alpha = 0.4f)
-    val borderWidth = if (isSuperset) 1.5.dp else 1.dp
+@Composable
+private fun RailArrow(icon: ImageVector, description: String, enabled: Boolean, onClick: () -> Unit) {
+    DarmixIconButton(
+        icon = icon,
+        contentDescription = description,
+        onClick = onClick,
+        enabled = enabled,
+        style = DarmixButtonStyle.Secondary,
+        containerColor = Color.Transparent,
+        contentColor = DarmixTheme.colors.textSecondary,
+        size = 32.dp,
+        shape = CircleShape,
+        haptic = HapticFeedbackType.SegmentTick
+    )
+}
 
-    Card(
+@Composable
+private fun SingleCard(exercise: ExerciseEntity, actions: ExerciseActions) {
+    val colors = DarmixTheme.colors
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .border(borderWidth, borderColor, MaterialTheme.shapes.large),
-        shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainer,
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+            .clip(DarmixShapes.Card)
+            .background(colors.card)
+            .border(1.dp, colors.hairline, DarmixShapes.Card)
+            .clickable(role = Role.Button) { actions.onEdit(exercise) }
+            .padding(Spacing.md)
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            // Chip de superserie
-            if (isSuperset) {
-                SupersetChip(rounds = entry.minOf { it.sets })
-            }
+        ExerciseRow(exercise = exercise, showSets = true, imageSize = 64.dp, accent = colors.voltText, actions = actions)
+    }
+}
 
-            // Ejercicios
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                entry.forEachIndexed { index, exercise ->
-                    if (index > 0) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(1.dp)
-                                .background(outline.copy(alpha = 0.3f)),
-                        )
-                    }
-                    ExerciseBlock(
-                        exercise = exercise,
-                        showSets = !isSuperset,
-                        onEdit = { onEdit(exercise) },
-                        onDelete = { onDelete(exercise) },
-                        onPickImage = { onPickImage(exercise) },
-                        onRemoveImage = { onRemoveImage(exercise) },
-                    )
-                }
+@Composable
+private fun SupersetCard(members: List<ExerciseEntity>, onUnlink: () -> Unit, actions: ExerciseActions) {
+    val colors = DarmixTheme.colors
+    val tide = colors.tideText
+    val onTide = if (colors.isDark) colors.onTide else Color.White
+    val rounds = remember(members) { members.minOf { it.sets } }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(DarmixShapes.Card)
+            .background(colors.card)
+            .drawBehind { drawRect(tide.copy(alpha = 0.06f)) }
+            .border(1.5.dp, tide.copy(alpha = 0.45f), DarmixShapes.Card)
+            .padding(Spacing.md),
+        verticalArrangement = Arrangement.spacedBy(Spacing.md)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+            StatusTag(text = "Superserie", container = tide.copy(alpha = 0.16f), content = tide, icon = Icons.Rounded.Repeat)
+            Text(text = "$rounds rondas", style = MaterialTheme.typography.labelMedium, color = tide)
+            Spacer(Modifier.weight(1f))
+            Row(
+                modifier = Modifier
+                    .clip(DarmixShapes.Pill)
+                    .clickable(role = Role.Button, onClick = onUnlink)
+                    .padding(horizontal = Spacing.sm, vertical = Spacing.xs),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Icon(Icons.Rounded.LinkOff, contentDescription = null, tint = colors.textSecondary, modifier = Modifier.size(16.dp))
+                Text(text = "Separar", style = MaterialTheme.typography.labelMedium, color = colors.textSecondary)
             }
-
-            // Fila inferior: reorden + enlaces
-            val showActionsRow = true
-            if (showActionsRow) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+        }
+        members.forEachIndexed { index, exercise ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(DarmixShapes.Control)
+                    .clickable(role = Role.Button) { actions.onEdit(exercise) },
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(Spacing.sm + 2.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(24.dp)
+                        .clip(DarmixShapes.Tag)
+                        .background(tide),
+                    contentAlignment = Alignment.Center
                 ) {
-                    MoveButton(
-                        icon = Icons.Default.KeyboardArrowUp,
-                        contentDescription = "Subir",
-                        enabled = canMoveUp,
-                        onClick = onMoveUp,
-                    )
-                    MoveButton(
-                        icon = Icons.Default.KeyboardArrowDown,
-                        contentDescription = "Bajar",
-                        enabled = canMoveDown,
-                        onClick = onMoveDown,
-                    )
-
-                    Spacer(Modifier.weight(1f))
-
-                    if (isSuperset) {
-                        SmallChipButton(
-                            text = "Separar",
-                            onClick = onUnlink,
-                        )
-                    }
-                    onLinkWithNext?.let { link ->
-                        SmallChipButton(
-                            text = "Enlazar →",
-                            onClick = link,
-                        )
-                    }
+                    Text(text = ('A' + index).toString(), style = MaterialTheme.typography.labelLarge, color = onTide)
+                }
+                Box(modifier = Modifier.weight(1f)) {
+                    ExerciseRow(exercise = exercise, showSets = false, imageSize = 52.dp, accent = tide, actions = actions)
                 }
             }
         }
@@ -486,482 +541,419 @@ private fun EntryCard(
 }
 
 @Composable
-private fun SupersetChip(rounds: Int) {
-    val secondary = MaterialTheme.colorScheme.secondary
-    Row(
-        modifier = Modifier
-            .background(secondary.copy(alpha = 0.14f), RoundedCornerShape(50))
-            .border(1.dp, secondary.copy(alpha = 0.35f), RoundedCornerShape(50))
-            .padding(horizontal = 10.dp, vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        Text(
-            text = "SUPERSERIE",
-            style = MaterialTheme.typography.labelMedium,
-            fontWeight = FontWeight.Bold,
-            color = secondary,
-        )
-        Text(
-            text = "· $rounds rondas",
-            style = MaterialTheme.typography.labelMedium,
-            color = secondary.copy(alpha = 0.75f),
-        )
-    }
-}
-
-@Composable
-private fun MoveButton(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    contentDescription: String,
-    enabled: Boolean,
-    onClick: () -> Unit,
-) {
-    val bg = MaterialTheme.colorScheme.surfaceContainerHighest
-    val fg = if (enabled) MaterialTheme.colorScheme.onSurface
-    else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
-
-    Box(
-        modifier = Modifier
-            .size(32.dp)
-            .clip(RoundedCornerShape(10.dp))
-            .background(bg)
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                enabled = enabled,
-                onClick = onClick,
-            ),
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = contentDescription,
-            tint = fg,
-            modifier = Modifier.size(18.dp),
-        )
-    }
-}
-
-@Composable
-private fun SmallChipButton(text: String, onClick: () -> Unit) {
-    Box(
-        modifier = Modifier
-            .clip(RoundedCornerShape(50))
-            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-            .border(
-                width = 1.dp,
-                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f),
-                shape = RoundedCornerShape(50),
-            )
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = onClick,
-            )
-            .padding(horizontal = 12.dp, vertical = 6.dp),
-    ) {
-        Text(
-            text = text,
-            style = MaterialTheme.typography.labelMedium,
-            fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.onSurface,
-        )
-    }
-}
-
-// ─────────────────────────────────────────────────────────────
-// Bloque de ejercicio dentro de un entry
-// ─────────────────────────────────────────────────────────────
-
-@Composable
-private fun ExerciseBlock(
+private fun ExerciseRow(
     exercise: ExerciseEntity,
     showSets: Boolean,
-    onEdit: () -> Unit,
-    onDelete: () -> Unit,
-    onPickImage: () -> Unit,
-    onRemoveImage: () -> Unit,
+    imageSize: Dp,
+    accent: Color,
+    actions: ExerciseActions
 ) {
-    val hasImage = exercise.imageUri != null
-
-    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        // ── Imagen + botón quitar ──
+    val colors = DarmixTheme.colors
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.md)
+    ) {
         Box {
             ExerciseImage(
                 imageName = exercise.imageUri,
                 exerciseName = exercise.name,
-                size = 64.dp,
-                onClick = onPickImage,
+                size = imageSize,
+                animated = false
             )
-            if (hasImage) {
+            Box(
+                modifier = Modifier
+                    .size(imageSize)
+                    .clip(RoundedCornerShape(if (imageSize >= 72.dp) 18.dp else 14.dp))
+                    .clickable(role = Role.Button) { actions.onPickImage(exercise) }
+            )
+            if (exercise.imageUri == null) {
                 Box(
                     modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .size(22.dp)
+                        .align(Alignment.BottomEnd)
+                        .padding(3.dp)
+                        .size(20.dp)
                         .clip(CircleShape)
-                        .background(DangerRed)
-                        .border(2.dp, MaterialTheme.colorScheme.surfaceContainer, CircleShape)
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                            onClick = onRemoveImage,
-                        ),
-                    contentAlignment = Alignment.Center,
+                        .background(colors.voltText),
+                    contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = "Quitar imagen",
-                        tint = MaterialTheme.colorScheme.onError,
-                        modifier = Modifier.size(12.dp),
+                        Icons.Rounded.Add,
+                        contentDescription = "Agregar imagen",
+                        tint = MaterialTheme.colorScheme.onPrimary,
+                        modifier = Modifier.size(14.dp)
                     )
                 }
             }
         }
-
-        // ── Info ──
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(3.dp),
-        ) {
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Text(
                 text = exercise.name,
                 style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
+                color = colors.textPrimary,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
             )
             Text(
-                text = if (showSets) "${exercise.sets} series · ${exercise.reps}"
-                else exercise.reps,
+                text = if (showSets) "${exercise.sets} × ${exercise.reps}" else exercise.reps,
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.primary,
-                fontWeight = FontWeight.SemiBold,
+                color = accent,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
             if (exercise.note.isNotBlank()) {
                 Text(
                     text = exercise.note,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
+                    color = colors.textTertiary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
         }
+        ExerciseMenu(exercise = exercise, actions = actions)
+    }
+}
 
-        // ── Acciones verticales ──
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            IconSquareAction(
-                icon = Icons.Default.Edit,
-                contentDescription = "Editar ejercicio",
-                container = MaterialTheme.colorScheme.surfaceContainerHighest,
-                content = MaterialTheme.colorScheme.onSurfaceVariant,
-                onClick = onEdit,
-            )
-            IconSquareAction(
-                icon = Icons.Default.Delete,
-                contentDescription = "Eliminar ejercicio",
-                container = DangerRed.copy(alpha = 0.12f),
-                content = DangerRed,
-                onClick = onDelete,
-            )
+@Composable
+private fun ExerciseMenu(exercise: ExerciseEntity, actions: ExerciseActions) {
+    val colors = DarmixTheme.colors
+    var open by remember { mutableStateOf(false) }
+    val bundled = remember(exercise.name) { ExerciseCatalog.imageRefFor(exercise.name) }
+    Box {
+        DarmixIconButton(
+            icon = Icons.Rounded.MoreVert,
+            contentDescription = "Opciones",
+            onClick = { open = true },
+            style = DarmixButtonStyle.Secondary,
+            containerColor = Color.Transparent,
+            contentColor = colors.textSecondary,
+            size = 36.dp,
+            shape = CircleShape
+        )
+        DropdownMenu(
+            expanded = open,
+            onDismissRequest = { open = false },
+            shape = DarmixShapes.Card,
+            containerColor = colors.cardRaised,
+            border = BorderStroke(1.dp, colors.hairline),
+            shadowElevation = 12.dp,
+            tonalElevation = 0.dp
+        ) {
+            MenuItem(text = "Editar", icon = Icons.Rounded.Edit) {
+                open = false
+                actions.onEdit(exercise)
+            }
+            MenuItem(
+                text = if (exercise.imageUri == null) "Agregar imagen" else "Cambiar imagen",
+                icon = Icons.Rounded.AddPhotoAlternate
+            ) {
+                open = false
+                actions.onPickImage(exercise)
+            }
+            if (bundled != null && bundled != exercise.imageUri) {
+                MenuItem(text = "Usar imagen incluida", icon = Icons.Rounded.AutoAwesome, tint = colors.voltText) {
+                    open = false
+                    actions.onRestoreImage(exercise)
+                }
+            }
+            if (exercise.imageUri != null) {
+                MenuItem(text = "Quitar imagen", icon = Icons.Rounded.HideImage) {
+                    open = false
+                    actions.onRemoveImage(exercise)
+                }
+            }
+            HorizontalDivider(color = colors.hairline, modifier = Modifier.padding(vertical = Spacing.xs))
+            MenuItem(text = "Eliminar", icon = Icons.Rounded.DeleteOutline, tint = colors.emberText) {
+                open = false
+                actions.onDelete(exercise)
+            }
         }
     }
 }
 
 @Composable
-private fun IconSquareAction(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    contentDescription: String,
-    container: androidx.compose.ui.graphics.Color,
-    content: androidx.compose.ui.graphics.Color,
-    onClick: () -> Unit,
-) {
-    Box(
+private fun MenuItem(text: String, icon: ImageVector, tint: Color = DarmixTheme.colors.textPrimary, onClick: () -> Unit) {
+    DropdownMenuItem(
+        text = { Text(text = text, style = MaterialTheme.typography.titleSmall, color = tint) },
+        leadingIcon = { Icon(icon, contentDescription = null, tint = tint) },
+        onClick = onClick
+    )
+}
+
+@Composable
+private fun LinkConnector(onLink: () -> Unit) {
+    val colors = DarmixTheme.colors
+    val haptic = LocalHapticFeedback.current
+    Row(
         modifier = Modifier
-            .size(32.dp)
-            .clip(RoundedCornerShape(10.dp))
-            .background(container)
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = onClick,
-            ),
-        contentAlignment = Alignment.Center,
+            .fillMaxWidth()
+            .height(40.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = contentDescription,
-            tint = content,
-            modifier = Modifier.size(16.dp),
+        Spacer(Modifier.width(RailWidth + Spacing.sm))
+        Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                drawLine(
+                    color = colors.hairlineStrong,
+                    start = Offset(size.width / 2f, 0f),
+                    end = Offset(size.width / 2f, size.height),
+                    strokeWidth = 1.5.dp.toPx(),
+                    pathEffect = PathEffect.dashPathEffect(floatArrayOf(4.dp.toPx(), 4.dp.toPx()))
+                )
+            }
+            Row(
+                modifier = Modifier
+                    .clip(DarmixShapes.Pill)
+                    .background(colors.canvas)
+                    .border(1.dp, colors.hairline, DarmixShapes.Pill)
+                    .clickable(role = Role.Button) {
+                        haptic.performHapticFeedback(HapticFeedbackType.Confirm)
+                        onLink()
+                    }
+                    .padding(horizontal = Spacing.md, vertical = 5.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Icon(Icons.Rounded.Link, contentDescription = null, tint = colors.tideText, modifier = Modifier.size(14.dp))
+                Text(text = "Unir en superserie", style = MaterialTheme.typography.labelMedium, color = colors.textSecondary)
+            }
+        }
+    }
+}
+
+@Composable
+private fun EmptyDay(onAdd: () -> Unit) {
+    val colors = DarmixTheme.colors
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(DarmixShapes.Hero)
+            .drawBehind {
+                val stroke = 1.5.dp.toPx()
+                drawRoundRect(
+                    color = colors.hairlineStrong,
+                    topLeft = Offset(stroke / 2f, stroke / 2f),
+                    size = size.copy(width = size.width - stroke, height = size.height - stroke),
+                    cornerRadius = CornerRadius(30.dp.toPx()),
+                    style = Stroke(stroke, pathEffect = PathEffect.dashPathEffect(floatArrayOf(8.dp.toPx(), 6.dp.toPx())))
+                )
+            }
+            .padding(horizontal = Spacing.xxl, vertical = Spacing.xxxl),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(Spacing.md)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(64.dp)
+                .clip(CircleShape)
+                .background(colors.tideSoft),
+            contentAlignment = Alignment.Center
+        ) {
+            Crescent(color = colors.tide, size = 28.dp)
+        }
+        Text(text = "DÍA DE DESCANSO", style = MaterialTheme.typography.headlineSmall, color = colors.textPrimary)
+        Text(
+            text = "Así se queda si no agregas nada. Si quieres entrenar este día, arma tu rutina.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = colors.textSecondary,
+            textAlign = TextAlign.Center
+        )
+        DarmixButton(
+            text = "AGREGAR PRIMER EJERCICIO",
+            onClick = onAdd,
+            icon = Icons.Rounded.Add,
+            modifier = Modifier.padding(top = Spacing.sm)
         )
     }
 }
 
-// ─────────────────────────────────────────────────────────────
-// Empty state
-// ─────────────────────────────────────────────────────────────
-
 @Composable
-private fun EmptyDayCard() {
+private fun AddFab(expanded: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val haptic = LocalHapticFeedback.current
     val primary = MaterialTheme.colorScheme.primary
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.4f), MaterialTheme.shapes.large),
-        shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainer,
-        ),
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(56.dp)
-                    .background(primary.copy(alpha = 0.12f), CircleShape)
-                    .border(1.dp, primary.copy(alpha = 0.3f), CircleShape),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Add,
-                    contentDescription = null,
-                    tint = primary,
-                    modifier = Modifier.size(26.dp),
-                )
+    val onPrimary = MaterialTheme.colorScheme.onPrimary
+    Row(
+        modifier = modifier
+            .height(58.dp)
+            .clip(DarmixShapes.Pill)
+            .background(primary)
+            .clickable(role = Role.Button) {
+                haptic.performHapticFeedback(HapticFeedbackType.Confirm)
+                onClick()
             }
+            .padding(horizontal = 18.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(Icons.Rounded.Add, contentDescription = "Agregar ejercicio", tint = onPrimary, modifier = Modifier.size(24.dp))
+        AnimatedVisibility(
+            visible = expanded,
+            enter = fadeIn() + expandHorizontally(),
+            exit = fadeOut() + shrinkHorizontally()
+        ) {
             Text(
-                text = "Día vacío",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-            )
-            Text(
-                text = "Usa «Agregar ejercicio» para armar tu rutina de este día.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                text = "AGREGAR",
+                style = MaterialTheme.typography.labelLarge,
+                color = onPrimary,
+                modifier = Modifier.padding(start = Spacing.sm)
             )
         }
     }
 }
 
-// ─────────────────────────────────────────────────────────────
-// Dialog: formulario add/edit
-// ─────────────────────────────────────────────────────────────
-
 @Composable
-private fun ExerciseFormDialog(
-    title: String,
+private fun ExerciseSheet(
     initial: ExerciseEntity?,
     onSave: (name: String, sets: Int, reps: String, note: String) -> Unit,
-    onDismiss: () -> Unit,
+    onDismiss: () -> Unit
 ) {
-    var name by remember { mutableStateOf(initial?.name.orEmpty()) }
-    var sets by remember { mutableStateOf((initial?.sets ?: 3).toString()) }
-    var reps by remember { mutableStateOf(initial?.reps.orEmpty()) }
-    var note by remember { mutableStateOf(initial?.note.orEmpty()) }
+    val colors = DarmixTheme.colors
+    var name by rememberSaveable { mutableStateOf(initial?.name.orEmpty()) }
+    var sets by rememberSaveable { mutableIntStateOf(initial?.sets ?: 3) }
+    var reps by rememberSaveable { mutableStateOf(initial?.reps.orEmpty()) }
+    var note by rememberSaveable { mutableStateOf(initial?.note.orEmpty()) }
+    val previewImage = remember(name, initial) { initial?.imageUri ?: ExerciseCatalog.imageRefFor(name) }
+    val suggested = initial == null && previewImage != null
+    val valid = name.isNotBlank()
 
-    val setsValue = sets.toIntOrNull()?.takeIf { it in 1..20 }
-    val valid = name.isNotBlank() && setsValue != null
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        shape = MaterialTheme.shapes.extraLarge,
-        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-        title = {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-            )
-        },
-        text = {
-            Column(
-                modifier = Modifier.verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    label = { Text("Nombre") },
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                OutlinedTextField(
-                    value = sets,
-                    onValueChange = { sets = it.filter(Char::isDigit).take(2) },
-                    label = { Text("Series (1 a 20)") },
-                    singleLine = true,
-                    isError = setsValue == null,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                if (initial?.supersetGroup != null) {
+    DarmixSheet(onDismiss = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .imePadding()
+                .padding(start = Spacing.screen, end = Spacing.screen, bottom = Spacing.xxl),
+            verticalArrangement = Arrangement.spacedBy(Spacing.lg)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
+                ExerciseImage(imageName = previewImage, exerciseName = name.ifBlank { "?" }, size = 64.dp)
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Overline(text = if (initial == null) "Nuevo ejercicio" else "Editar ejercicio", color = colors.voltText)
                     Text(
-                        text = "Este ejercicio está en una superserie: las series se aplican a todos sus ejercicios.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        text = name.ifBlank { "Sin nombre" },
+                        style = MaterialTheme.typography.titleLarge,
+                        color = if (name.isBlank()) colors.textTertiary else colors.textPrimary,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
                     )
+                    if (suggested) {
+                        Text(text = "Imagen incluida encontrada", style = MaterialTheme.typography.labelMedium, color = colors.voltText)
+                    }
                 }
-                OutlinedTextField(
-                    value = reps,
-                    onValueChange = { reps = it },
-                    label = { Text("Repeticiones (ej. 8-12 reps, Al fallo)") },
-                    modifier = Modifier.fillMaxWidth(),
+            }
+
+            DarmixTextField(
+                value = name,
+                onValueChange = { name = it },
+                label = "Nombre del ejercicio",
+                placeholder = "Ej. Sentadilla Copa (Goblet Squat)"
+            )
+
+            NumberStepper(
+                value = sets,
+                onValueChange = { sets = it },
+                range = 1..20,
+                label = "Series",
+                hint = if (initial?.supersetGroup != null) "Se aplica a toda la superserie" else null
+            )
+
+            Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                Overline(text = "Repeticiones", color = colors.textSecondary)
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.xs + 2.dp)
+                ) {
+                    RepPresets.forEach { preset ->
+                        SelectChip(text = preset, selected = reps == preset, onClick = { reps = preset })
+                    }
+                }
+                DarmixTextField(value = reps, onValueChange = { reps = it }, label = "Repeticiones o tiempo")
+            }
+
+            DarmixTextField(
+                value = note,
+                onValueChange = { note = it },
+                label = "Nota técnica",
+                placeholder = "Ej. Espalda neutra y baja con control",
+                singleLine = false,
+                minLines = 2
+            )
+
+            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm + 2.dp)) {
+                DarmixButton(
+                    text = "Cancelar",
+                    onClick = onDismiss,
+                    style = DarmixButtonStyle.Ghost,
+                    haptic = null,
+                    modifier = Modifier.width(120.dp)
                 )
-                OutlinedTextField(
-                    value = note,
-                    onValueChange = { note = it },
-                    label = { Text("Nota técnica") },
-                    modifier = Modifier.fillMaxWidth(),
+                DarmixButton(
+                    text = "GUARDAR",
+                    onClick = { onSave(name.trim(), sets, reps.trim(), note.trim()) },
+                    enabled = valid,
+                    modifier = Modifier.weight(1f)
                 )
             }
-        },
-        confirmButton = {
-            Button(
-                enabled = valid,
-                onClick = {
-                    setsValue?.let { onSave(name.trim(), it, reps.trim(), note.trim()) }
-                },
-                shape = MaterialTheme.shapes.medium,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                ),
-            ) {
-                Text("Guardar", fontWeight = FontWeight.Bold)
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(
-                    "Cancelar",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        },
-    )
+        }
+    }
 }
 
-// ─────────────────────────────────────────────────────────────
-// Dialog: editar título del día
-// ─────────────────────────────────────────────────────────────
-
 @Composable
-private fun TitleDialog(initial: String, onSave: (String) -> Unit, onDismiss: () -> Unit) {
-    var text by remember { mutableStateOf(initial) }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        shape = MaterialTheme.shapes.extraLarge,
-        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-        title = {
-            Text(
-                text = "Título del día",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-            )
-        },
-        text = {
-            OutlinedTextField(
+private fun TitleSheet(initial: String, onSave: (String) -> Unit, onDismiss: () -> Unit) {
+    val colors = DarmixTheme.colors
+    var text by rememberSaveable { mutableStateOf(initial) }
+    DarmixSheet(onDismiss = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .imePadding()
+                .padding(start = Spacing.screen, end = Spacing.screen, bottom = Spacing.xxl),
+            verticalArrangement = Arrangement.spacedBy(Spacing.lg)
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Overline(text = "Título del día", color = colors.voltText)
+                Text(text = "¿Qué toca este día?", style = MaterialTheme.typography.titleLarge, color = colors.textPrimary)
+            }
+            Row(
+                modifier = Modifier.horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(Spacing.xs + 2.dp)
+            ) {
+                TitlePresets.forEach { preset ->
+                    SelectChip(text = preset, selected = text == preset, onClick = { text = preset })
+                }
+            }
+            DarmixTextField(
                 value = text,
                 onValueChange = { text = it },
-                label = { Text("Ej. Empuje (Pecho, Hombro y Tríceps)") },
-                modifier = Modifier.fillMaxWidth(),
+                label = "Título",
+                placeholder = "Ej. Empuje (Pecho, Hombro y Tríceps)"
             )
-        },
-        confirmButton = {
-            Button(
-                enabled = text.isNotBlank(),
-                onClick = { onSave(text.trim()) },
-                shape = MaterialTheme.shapes.medium,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                ),
-            ) {
-                Text("Guardar", fontWeight = FontWeight.Bold)
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(
-                    "Cancelar",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm + 2.dp)) {
+                DarmixButton(
+                    text = "Cancelar",
+                    onClick = onDismiss,
+                    style = DarmixButtonStyle.Ghost,
+                    haptic = null,
+                    modifier = Modifier.width(120.dp)
+                )
+                DarmixButton(
+                    text = "GUARDAR",
+                    onClick = { onSave(text.trim()) },
+                    enabled = text.isNotBlank(),
+                    modifier = Modifier.weight(1f)
                 )
             }
-        },
-    )
+        }
+    }
 }
 
-// ─────────────────────────────────────────────────────────────
-// Dialog: eliminar ejercicio (destructivo)
-// ─────────────────────────────────────────────────────────────
-
 @Composable
-private fun DeleteExerciseDialog(
-    exercise: ExerciseEntity,
-    onConfirm: () -> Unit,
-    onDismiss: () -> Unit,
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        shape = MaterialTheme.shapes.extraLarge,
-        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-        title = {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(36.dp)
-                        .background(DangerRed.copy(alpha = 0.14f), CircleShape)
-                        .border(1.dp, DangerRed.copy(alpha = 0.35f), CircleShape),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Delete,
-                        contentDescription = null,
-                        tint = DangerRed,
-                        modifier = Modifier.size(18.dp),
-                    )
-                }
-                Text(
-                    text = "Eliminar ejercicio",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                )
-            }
-        },
-        text = {
-            Text(
-                text = "¿Eliminar «${exercise.name}»? También se borra su progreso registrado y su imagen. " +
-                        "Si forma parte de una superserie de dos, el otro ejercicio quedará suelto.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        },
-        confirmButton = {
-            Button(
-                onClick = onConfirm,
-                shape = MaterialTheme.shapes.medium,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = DangerRed,
-                    contentColor = MaterialTheme.colorScheme.onError,
-                ),
-            ) {
-                Text("Eliminar", fontWeight = FontWeight.Bold)
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(
-                    "Cancelar",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        },
-    )
+private fun Crescent(color: Color, size: Dp) {
+    Canvas(modifier = Modifier.size(size)) {
+        val r = this.size.minDimension / 2f
+        val c = center
+        val body = Path().apply { addOval(Rect(c, r * 0.85f)) }
+        val bite = Path().apply { addOval(Rect(c + Offset(r * 0.55f, -r * 0.35f), r * 0.8f)) }
+        drawPath(Path().apply { op(body, bite, PathOperation.Difference) }, color)
+    }
 }

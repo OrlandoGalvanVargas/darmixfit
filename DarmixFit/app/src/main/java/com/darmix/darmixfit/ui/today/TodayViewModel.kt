@@ -1,15 +1,18 @@
 package com.darmix.darmixfit.ui.today
 
 import android.content.Context
+import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
-import com.darmix.darmixfit.FitFlowApp
+import com.darmix.darmixfit.DarmixFitApp
 import com.darmix.darmixfit.data.ExerciseEntity
 import com.darmix.darmixfit.data.RoutineRepository
+import com.darmix.darmixfit.service.RestAutoState
+import com.darmix.darmixfit.service.RestPreferences
 import com.darmix.darmixfit.service.RestTimer
 import com.darmix.darmixfit.service.TimerState
 import com.darmix.darmixfit.service.TimerStore
@@ -26,35 +29,51 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 
+@Immutable
 data class ExerciseProgress(val exercise: ExerciseEntity, val completed: Int)
 
+@Immutable
 sealed interface TodayItem {
     val key: String
+    val totalUnits: Int
+    val completedUnits: Int
+    val isFinished: Boolean get() = completedUnits >= totalUnits
 
     data class Single(val entry: ExerciseProgress) : TodayItem {
         override val key = "ex-${entry.exercise.id}"
+        override val totalUnits = entry.exercise.sets
+        override val completedUnits = entry.completed
     }
 
     data class Superset(val members: List<ExerciseProgress>) : TodayItem {
         override val key = "ss-${members.first().exercise.id}"
-        val totalRounds: Int get() = members.minOf { it.exercise.sets }
-        val completedRounds: Int get() = members.minOf { it.completed }
+        val totalRounds = members.minOf { it.exercise.sets }
+        val completedRounds = members.minOf { it.completed }
+        override val totalUnits = totalRounds
+        override val completedUnits = completedRounds
     }
 }
 
+@Immutable
 data class TodayUiState(
     val date: LocalDate,
     val planTitle: String? = null,
     val items: List<TodayItem> = emptyList(),
-    /** true mientras la rutina precargada todavía se está insertando. */
     val loading: Boolean = true,
-)
+    val doneCount: Int = 0,
+    val activeIndex: Int = -1,
+    val completedSets: Int = 0,
+    val totalSets: Int = 0
+) {
+    val totalCount: Int get() = items.size
+    val progress: Float get() = if (totalSets == 0) 0f else completedSets.toFloat() / totalSets
+    val allComplete: Boolean get() = items.isNotEmpty() && doneCount == items.size
+}
 
 class TodayViewModel(
     private val repo: RoutineRepository,
     private val appContext: Context,
-    /** Solo para pruebas: fuerza una fecha (ej. LocalDate.of(2026, 9, 25) = viernes). */
-    private val debugDate: LocalDate? = null,
+    private val debugDate: LocalDate? = null
 ) : ViewModel() {
 
     private fun now(): LocalDate = debugDate ?: LocalDate.now()
@@ -66,19 +85,15 @@ class TodayViewModel(
 
     val timerState: StateFlow<TimerState> = TimerStore.state
 
-    /** Descanso sugerido del programa activo (cada programa puede tener el suyo). */
+    private val restPreferences = RestPreferences.get(appContext)
+    val restAuto: StateFlow<RestAutoState> = restPreferences.state
+
     val restDefaultSeconds: StateFlow<Int> = repo.observeActiveProgram()
         .map { it?.restSeconds ?: RestTimer.DEFAULT_SECONDS }
         .distinctUntilChanged()
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5_000),
-            initialValue = RestTimer.DEFAULT_SECONDS,
-        )
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), RestTimer.DEFAULT_SECONDS)
 
     init {
-        // El modal se abre cuando el temporizador arranca y se cierra solo
-        // cuando termina o se cancela (aunque eso ocurra con la app en segundo plano).
         viewModelScope.launch {
             TimerStore.state
                 .map { it.active }
@@ -87,84 +102,78 @@ class TodayViewModel(
         }
     }
 
+    private val focusOverride = MutableStateFlow<String?>(null)
+
     @OptIn(ExperimentalCoroutinesApi::class)
-    val uiState: StateFlow<TodayUiState> = today
+    private val baseState = today
         .flatMapLatest { date ->
             combine(
                 repo.observeDayPlans(),
                 repo.observeExercises(date.dayOfWeek),
-                repo.observeProgress(date),
+                repo.observeProgress(date)
             ) { plans, exercises, progress ->
+                val items = buildItems(exercises, progress)
                 TodayUiState(
                     date = date,
                     planTitle = plans.firstOrNull { it.dayOfWeek == date.dayOfWeek.value }?.title,
-                    items = buildItems(exercises, progress),
+                    items = items,
                     loading = plans.isEmpty(),
+                    doneCount = items.count { it.isFinished },
+                    activeIndex = items.indexOfFirst { !it.isFinished },
+                    completedSets = items.sumOf { it.completedUnits.coerceAtMost(it.totalUnits) },
+                    totalSets = items.sumOf { it.totalUnits }
                 )
             }
         }
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5_000),
-            initialValue = TodayUiState(date = now()),
-        )
 
-    /**
-     * true cuando TODOS los ejercicios del día están completos. Es un reflejo directo del
-     * estado actual, sin memoria de si ya se mostró antes: la pantalla decide cuándo ocultarlo.
-     */
-    val allDayComplete: StateFlow<Boolean> = uiState
-        .map { isAllComplete(it.items) }
+    val uiState: StateFlow<TodayUiState> = combine(baseState, focusOverride) { base, focusKey ->
+        val focused = focusKey?.let { key -> base.items.indexOfFirst { it.key == key && !it.isFinished } } ?: -1
+        if (focused >= 0) base.copy(activeIndex = focused) else base
+    }
         .distinctUntilChanged()
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5_000),
-            initialValue = false,
-        )
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), TodayUiState(date = now()))
 
-    private fun isAllComplete(items: List<TodayItem>): Boolean =
-        items.isNotEmpty() && items.all { item ->
-            when (item) {
-                is TodayItem.Single -> item.entry.completed >= item.entry.exercise.sets
-                is TodayItem.Superset -> item.completedRounds >= item.totalRounds
+    val allDayComplete: StateFlow<Boolean> = uiState
+        .map { it.allComplete }
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
+    private fun buildItems(exercises: List<ExerciseEntity>, progress: Map<Long, Int>): List<TodayItem> {
+        val grouped = exercises.filter { it.supersetGroup != null }.groupBy { it.supersetGroup }
+        val seenGroups = HashSet<Int>()
+        return buildList {
+            for (exercise in exercises) {
+                val group = exercise.supersetGroup
+                if (group == null) {
+                    add(TodayItem.Single(ExerciseProgress(exercise, progress[exercise.id] ?: 0)))
+                } else if (seenGroups.add(group)) {
+                    val members = grouped.getValue(group).map { ExerciseProgress(it, progress[it.id] ?: 0) }
+                    add(TodayItem.Superset(members))
+                }
             }
         }
+    }
 
-    /** Agrupa los ejercicios de una misma superserie en un solo elemento. */
-    private fun buildItems(
-        exercises: List<ExerciseEntity>,
-        progress: Map<Long, Int>,
-    ): List<TodayItem> {
-        val items = mutableListOf<TodayItem>()
-        val seenGroups = mutableSetOf<Int>()
-        for (exercise in exercises) {
-            val group = exercise.supersetGroup
-            if (group == null) {
-                items += TodayItem.Single(ExerciseProgress(exercise, progress[exercise.id] ?: 0))
-            } else if (seenGroups.add(group)) {
-                val members = exercises
-                    .filter { it.supersetGroup == group }
-                    .map { ExerciseProgress(it, progress[it.id] ?: 0) }
-                items += TodayItem.Superset(members)
-            }
-        }
-        return items
+    fun focus(item: TodayItem) {
+        focusOverride.value = item.key
     }
 
     fun refreshDate() {
-        today.value = now()
+        val date = now()
+        if (date != today.value) focusOverride.value = null
+        today.value = date
         TimerStore.expireIfStale()
     }
 
     fun completeSet(exercise: ExerciseEntity) {
         viewModelScope.launch {
-            if (repo.completeSet(exercise, today.value)) _restVisible.value = true
+            if (repo.completeSet(exercise, today.value)) onSetLogged()
         }
     }
 
     fun completeRound(members: List<ExerciseEntity>) {
         viewModelScope.launch {
-            if (repo.completeRound(members, today.value)) _restVisible.value = true
+            if (repo.completeRound(members, today.value)) onSetLogged()
         }
     }
 
@@ -173,16 +182,26 @@ class TodayViewModel(
     }
 
     fun undoRound(members: List<ExerciseEntity>) {
-        viewModelScope.launch {
-            members.forEach { repo.undoSet(it.id, today.value) }
+        viewModelScope.launch { members.forEach { repo.undoSet(it.id, today.value) } }
+    }
+
+    private fun onSetLogged() {
+        val auto = restPreferences.state.value
+        if (auto.enabled) {
+            RestTimer.start(appContext, auto.seconds)
+        } else {
+            _restVisible.value = true
         }
     }
 
     fun startRest(seconds: Int) = RestTimer.start(appContext, seconds)
 
+    fun extendRest() = RestTimer.extend(appContext)
+
+    fun setAutoRest(enabled: Boolean, seconds: Int) = restPreferences.update(enabled, seconds)
+
     fun cancelRest() = RestTimer.cancel(appContext)
 
-    /** Cierra el modal cuando el temporizador todavía no se inició. */
     fun dismissRest() {
         _restVisible.value = false
     }
@@ -190,7 +209,7 @@ class TodayViewModel(
     companion object {
         val Factory: ViewModelProvider.Factory = viewModelFactory {
             initializer {
-                val app = this[APPLICATION_KEY] as FitFlowApp
+                val app = this[APPLICATION_KEY] as DarmixFitApp
                 TodayViewModel(app.repository, app)
             }
         }

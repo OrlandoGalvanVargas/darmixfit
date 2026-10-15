@@ -14,8 +14,7 @@ class RoutineRepository(context: Context, db: AppDatabase) {
     private val progressDao = db.progressDao()
     private val programDao = db.programDao()
     private val historyDao = db.historyDao()
-
-    // ---- Lectura (siempre del programa activo) ----
+    private val catalogDao = db.catalogDao()
 
     fun observeDayPlans(): Flow<List<DayPlanEntity>> = routineDao.observeDayPlans()
 
@@ -24,16 +23,13 @@ class RoutineRepository(context: Context, db: AppDatabase) {
     fun observeExercises(day: DayOfWeek): Flow<List<ExerciseEntity>> =
         routineDao.observeExercisesByDay(day.value)
 
-    /** Mapa idEjercicio -> series completadas en esa fecha. */
     fun observeProgress(date: LocalDate): Flow<Map<Long, Int>> =
         progressDao.observeByDate(date.toString())
             .map { list -> list.associate { it.exerciseId to it.completedSets } }
 
-    /** Devuelve true si se sumó una serie (false si ya estaba en el tope). */
     suspend fun completeSet(exercise: ExerciseEntity, date: LocalDate): Boolean =
         progressDao.increment(exercise.id, date.toString(), exercise.sets)
 
-    /** Para superseries: suma una ronda a todos los ejercicios del grupo a la vez. */
     suspend fun completeRound(exercises: List<ExerciseEntity>, date: LocalDate): Boolean =
         progressDao.incrementMany(
             exercises.map { SetTarget(it.id, it.sets) },
@@ -44,10 +40,10 @@ class RoutineRepository(context: Context, db: AppDatabase) {
         progressDao.decrement(exerciseId, date.toString())
     }
 
-    // ---- Edición de la rutina ----
-
     suspend fun addExercise(day: Int, name: String, sets: Int, reps: String, note: String) =
-        routineDao.addExercise(day, name, sets, reps, note)
+        routineDao.addExercise(day, name, sets, reps, note).also {
+            ExerciseCatalog.imageRefFor(name)?.let { ref -> catalogDao.assignByName(day, name, ref) }
+        }
 
     suspend fun saveExercise(
         id: Long,
@@ -74,9 +70,6 @@ class RoutineRepository(context: Context, db: AppDatabase) {
 
     suspend fun updateDayTitle(day: Int, title: String) = routineDao.updateDayTitle(day, title)
 
-    // ---- Imágenes ----
-
-    /** Copia la imagen elegida a la app y reemplaza la anterior. Devuelve false si falla. */
     suspend fun setExerciseImage(exerciseId: Long, source: Uri): Boolean {
         val newName = ExerciseImageStore.import(appContext, source) ?: return false
         val old = routineDao.getImage(exerciseId)
@@ -85,13 +78,19 @@ class RoutineRepository(context: Context, db: AppDatabase) {
         return true
     }
 
+    suspend fun restoreBundledImage(exerciseId: Long, exerciseName: String): Boolean {
+        val ref = ExerciseCatalog.imageRefFor(exerciseName) ?: return false
+        val old = routineDao.getImage(exerciseId)
+        routineDao.updateImage(exerciseId, ref)
+        if (old != ref) ExerciseImageStore.delete(appContext, old)
+        return true
+    }
+
     suspend fun clearExerciseImage(exerciseId: Long) {
         val old = routineDao.getImage(exerciseId)
         routineDao.updateImage(exerciseId, null)
         ExerciseImageStore.delete(appContext, old)
     }
-
-    // ---- Programas ----
 
     fun observePrograms(): Flow<List<ProgramEntity>> = programDao.observePrograms()
 
@@ -103,7 +102,6 @@ class RoutineRepository(context: Context, db: AppDatabase) {
         if (name.isNotBlank()) programDao.rename(id, name.trim())
     }
 
-    /** Crea un programa nuevo (copia de la plantilla) y devuelve el nombre final. */
     suspend fun addProgram(
         template: ProgramTemplate,
         name: String? = null,
@@ -121,13 +119,14 @@ class RoutineRepository(context: Context, db: AppDatabase) {
         val exercises = template.days.flatMapIndexed { dayIndex, day ->
             day.exercises.mapIndexed { order, item ->
                 ExerciseEntity(
-                    programId = 0, // se asigna al crear el programa
+                    programId = 0,
                     dayOfWeek = dayIndex + 1,
                     sortOrder = order,
                     name = item.name,
                     sets = item.sets,
                     reps = item.reps,
                     note = item.note,
+                    imageUri = ExerciseCatalog.imageRefFor(item.name),
                     supersetGroup = item.group,
                 )
             }
@@ -147,15 +146,12 @@ class RoutineRepository(context: Context, db: AppDatabase) {
         return finalName
     }
 
-    /** No permite borrar el único programa. Devuelve false en ese caso. */
     suspend fun deleteProgram(id: Long): Boolean {
         if (programDao.count() <= 1) return false
         val images = programDao.deleteProgram(id)
         images.forEach { ExerciseImageStore.delete(appContext, it) }
         return true
     }
-
-    // ---- Historial ----
 
     fun observeLogs(from: LocalDate, to: LocalDate): Flow<List<WorkoutLogEntity>> =
         historyDao.observeLogs(from.toString(), to.toString())
@@ -169,12 +165,27 @@ class RoutineRepository(context: Context, db: AppDatabase) {
     fun observeCompleteDates(): Flow<List<LocalDate>> =
         historyDao.observeCompleteDates().map { list -> list.map { LocalDate.parse(it) } }
 
-    /** En un teléfono nuevo instala la rutina por defecto; en los demás solo asegura un programa activo. */
     suspend fun seedIfNeeded() {
         if (programDao.count() == 0) {
             addProgram(ProgramTemplates.default, activate = true)
         } else {
             programDao.ensureActive()
         }
+        backfillBundledImages()
+    }
+
+    private suspend fun backfillBundledImages() {
+        val prefs = appContext.getSharedPreferences(CATALOG_PREFS, Context.MODE_PRIVATE)
+        if (prefs.getBoolean(KEY_BACKFILL, false)) return
+        val assignments = catalogDao.templateExercisesWithoutImage()
+            .mapNotNull { row -> ExerciseCatalog.imageRefFor(row.name)?.let { row.id to it } }
+            .toMap()
+        if (assignments.isNotEmpty()) catalogDao.assignImages(assignments)
+        prefs.edit().putBoolean(KEY_BACKFILL, true).apply()
+    }
+
+    private companion object {
+        const val CATALOG_PREFS = "darmixfit_catalog"
+        const val KEY_BACKFILL = "bundled_images_v1"
     }
 }

@@ -5,21 +5,19 @@ import androidx.room.Embedded
 import androidx.room.Query
 import kotlinx.coroutines.flow.Flow
 
-/** Foto del día junto con el nombre del programa. */
 data class DayLogRow(
     @Embedded val log: WorkoutLogEntity,
-    val programName: String,
+    val programName: String
 )
 
-/** Un ejercicio con progreso en una fecha. */
 data class HistoryExerciseRow(
     val name: String,
     val sets: Int,
     val completedSets: Int,
     val programId: Long,
+    val imageUri: String?
 )
 
-/** Rutina completa: todas las series planeadas están hechas. */
 val WorkoutLogEntity.isComplete: Boolean
     get() = plannedSets > 0 && doneSets >= plannedSets
 
@@ -36,7 +34,8 @@ abstract class HistoryDao {
     abstract fun observeDayLogs(date: String): Flow<List<DayLogRow>>
 
     @Query(
-        "SELECT e.name AS name, e.sets AS sets, sp.completedSets AS completedSets, e.programId AS programId " +
+        "SELECT e.name AS name, e.sets AS sets, sp.completedSets AS completedSets, " +
+                "e.programId AS programId, e.imageUri AS imageUri " +
                 "FROM set_progress sp JOIN exercises e ON e.id = sp.exerciseId " +
                 "WHERE sp.date = :date AND sp.completedSets > 0 ORDER BY e.programId, e.sortOrder"
     )

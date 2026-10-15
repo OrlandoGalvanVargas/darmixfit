@@ -1,17 +1,27 @@
 package com.darmix.darmixfit.ui.today
 
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -23,195 +33,243 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.Undo
+import androidx.compose.material.icons.rounded.Bolt
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.Lightbulb
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Repeat
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.center
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathOperation
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.darmix.darmixfit.data.ExerciseEntity
+import com.darmix.darmixfit.ui.components.DarmixButton
+import com.darmix.darmixfit.ui.components.DarmixButtonStyle
+import com.darmix.darmixfit.ui.components.DarmixIconButton
 import com.darmix.darmixfit.ui.components.ExerciseImage
 import com.darmix.darmixfit.ui.components.FullscreenImageDialog
-import com.darmix.darmixfit.ui.theme.SuccessGreen
+import com.darmix.darmixfit.ui.components.InfoChip
+import com.darmix.darmixfit.ui.components.Overline
+import com.darmix.darmixfit.ui.components.SetBoxes
+import com.darmix.darmixfit.ui.components.SetMeter
+import com.darmix.darmixfit.ui.components.StatusTag
+import com.darmix.darmixfit.ui.theme.DarmixColors
+import com.darmix.darmixfit.ui.theme.DarmixShapes
+import com.darmix.darmixfit.ui.theme.DarmixTextStyles
+import com.darmix.darmixfit.ui.theme.DarmixTheme
+import com.darmix.darmixfit.ui.theme.Motion
+import com.darmix.darmixfit.ui.theme.Spacing
 import com.darmix.darmixfit.ui.timer.RestTimerDialog
+import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
+import java.time.temporal.IsoFields
 import java.util.Locale
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Canvas
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.PathOperation
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.StrokeJoin
+import kotlinx.coroutines.delay
+
+private val MexicoLocale: Locale = Locale.forLanguageTag("es-MX")
+private val DayMonthFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("d MMM", MexicoLocale)
+
+private const val LEADING_ITEMS = 3
+private const val UNSET = Int.MIN_VALUE
+private val RailWidth = 32.dp
+private val NodeY = 30.dp
+
+private enum class CardStatus { DONE, ACTIVE, UPCOMING }
+
+private data class Accent(val fill: Color, val onFill: Color, val text: Color)
+
+@Composable
+private fun voltAccent(colors: DarmixColors) = remember(colors) {
+    Accent(
+        fill = colors.voltText,
+        onFill = if (colors.isDark) colors.onVolt else Color.White,
+        text = colors.voltText
+    )
+}
+
+@Composable
+private fun tideAccent(colors: DarmixColors) = remember(colors) {
+    Accent(
+        fill = colors.tideText,
+        onFill = if (colors.isDark) colors.onTide else Color.White,
+        text = colors.tideText
+    )
+}
+
 @Composable
 fun TodayScreen(
     modifier: Modifier = Modifier,
     viewModel: TodayViewModel = viewModel(factory = TodayViewModel.Factory),
-    onSwitchProgram: () -> Unit = {},
+    onSwitchProgram: () -> Unit = {}
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val restVisible by viewModel.restVisible.collectAsStateWithLifecycle()
     val timer by viewModel.timerState.collectAsStateWithLifecycle()
     val restDefault by viewModel.restDefaultSeconds.collectAsStateWithLifecycle()
+    val restAuto by viewModel.restAuto.collectAsStateWithLifecycle()
     val allComplete by viewModel.allDayComplete.collectAsStateWithLifecycle()
+    val colors = DarmixTheme.colors
 
     var enlarged by remember { mutableStateOf<ExerciseEntity?>(null) }
-
-    // "Ocultado" NO persiste: es memoria normal de Compose, no rememberSaveable.
-    // Se reinicia solo al salir de esta pantalla y volver (otra pestaña, o cerrar y
-    // abrir la app), y también en cuanto el día deja de estar completo.
     var dismissed by remember { mutableStateOf(false) }
     LaunchedEffect(allComplete) {
         if (!allComplete) dismissed = false
     }
-    val showSessionComplete = allComplete && !dismissed
 
-    // Si la app estuvo abierta durante la noche, al volver se actualiza el día.
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.refreshDate() }
 
-    val dayName = state.date.dayOfWeek
-        .getDisplayName(TextStyle.FULL, Locale.forLanguageTag("es-MX"))
-        .replaceFirstChar { it.uppercase() }
-    val dayNumber = remember(state.date) {
-        state.date.format(DateTimeFormatter.ofPattern("d MMM", Locale.forLanguageTag("es-MX")))
+    val listState = rememberLazyListState()
+    val lastFocused = remember { mutableIntStateOf(UNSET) }
+    LaunchedEffect(state.loading, state.activeIndex) {
+        if (state.loading || state.items.isEmpty()) return@LaunchedEffect
+        val target = state.activeIndex
+        val previous = lastFocused.intValue
+        lastFocused.intValue = target
+        if (target < 0) return@LaunchedEffect
+        val listIndex = LEADING_ITEMS + target - 1
+        if (previous == UNSET) {
+            if (target > 0) listState.scrollToItem(listIndex)
+        } else if (previous != target) {
+            delay(320)
+            listState.animateScrollToItem(listIndex)
+        }
     }
 
-    val doneCount = state.items.count { isItemFinished(it) }
-    val totalCount = state.items.size
-    val progressFraction = if (totalCount == 0) 0f else doneCount.toFloat() / totalCount
-    val animatedProgress by animateFloatAsState(
-        targetValue = progressFraction,
-        animationSpec = tween(450),
-        label = "today-progress",
-    )
-    val activeIndex = state.items.indexOfFirst { !isItemFinished(it) }
+    val onImageClick: (ExerciseEntity) -> Unit = remember { { exercise: ExerciseEntity -> enlarged = exercise } }
 
-    // Box en vez de LazyColumn directo: así el aviso se superpone SOLO a esta pantalla
-    // (no es un Dialog de sistema), y la barra inferior de navegación queda libre.
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
+            .background(colors.canvas)
     ) {
         LazyColumn(
+            state = listState,
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 20.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+            contentPadding = PaddingValues(top = Spacing.md, bottom = Spacing.huge)
         ) {
-            item(key = "header") {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(
-                        text = dayNumber.replaceFirstChar { it.uppercase() },
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                    Text(text = dayName, style = MaterialTheme.typography.headlineMedium)
-                    state.planTitle?.let {
-                        Text(
-                            text = it,
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
-            }
-
-            if (!state.loading && state.items.isNotEmpty()) {
-                item(key = "progress") {
-                    TodayProgressCard(done = doneCount, total = totalCount, progress = animatedProgress)
-                }
+            item(key = "header", contentType = "header") {
+                TodayHeader(date = state.date, planTitle = state.planTitle)
             }
 
             when {
-                state.loading -> item(key = "loading") {
-                    Text(
-                        text = "Cargando rutina…",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                state.loading -> items(count = 3, key = { "skeleton-$it" }, contentType = { "skeleton" }) {
+                    SkeletonCard()
                 }
 
-                state.items.isEmpty() -> item(key = "rest-day") {
-                    RestDayCard()
-                }
-
-                else -> itemsIndexed(
-                    items = state.items,
-                    key = { _, item -> item.key },
-                ) { index, item ->
-                    val status = when {
-                        isItemFinished(item) -> CardStatus.DONE
-                        index == activeIndex -> CardStatus.ACTIVE
-                        else -> CardStatus.UPCOMING
+                state.items.isEmpty() -> item(key = "rest-day", contentType = "rest") {
+                    Box(Modifier.padding(horizontal = Spacing.screen, vertical = Spacing.lg)) {
+                        RestDayCard()
                     }
-                    when (item) {
-                        is TodayItem.Single -> ExerciseCard(
-                            entry = item.entry,
-                            status = status,
-                            onComplete = { viewModel.completeSet(item.entry.exercise) },
-                            onUndo = { viewModel.undoSet(item.entry.exercise) },
-                            onImageClick = { enlarged = it },
-                        )
+                }
 
-                        is TodayItem.Superset -> SupersetCard(
-                            item = item,
+                else -> {
+                    item(key = "score", contentType = "score") {
+                        Scoreboard(state = state)
+                    }
+                    item(key = "section", contentType = "section") {
+                        SectionLabel(blocks = state.totalCount, sets = state.totalSets)
+                    }
+                    itemsIndexed(
+                        items = state.items,
+                        key = { _, item -> item.key },
+                        contentType = { _, item -> item::class }
+                    ) { index, item ->
+                        val status = when {
+                            item.isFinished -> CardStatus.DONE
+                            index == state.activeIndex -> CardStatus.ACTIVE
+                            else -> CardStatus.UPCOMING
+                        }
+                        val accent = if (item is TodayItem.Superset) tideAccent(colors) else voltAccent(colors)
+                        TimelineRow(
                             status = status,
-                            onComplete = { viewModel.completeRound(item.members.map { it.exercise }) },
-                            onUndo = { viewModel.undoRound(item.members.map { it.exercise }) },
-                            onImageClick = { enlarged = it },
-                        )
+                            isFirst = index == 0,
+                            isLast = index == state.items.lastIndex,
+                            accent = accent,
+                            modifier = Modifier.animateItem()
+                        ) {
+                            when (item) {
+                                is TodayItem.Single -> SingleBlock(
+                                    position = index + 1,
+                                    totalBlocks = state.totalCount,
+                                    entry = item.entry,
+                                    status = status,
+                                    accent = accent,
+                                    onComplete = { viewModel.completeSet(item.entry.exercise) },
+                                    onUndo = { viewModel.undoSet(item.entry.exercise) },
+                                    onFocus = { viewModel.focus(item) },
+                                    onImageClick = onImageClick
+                                )
+
+                                is TodayItem.Superset -> SupersetBlock(
+                                    position = index + 1,
+                                    totalBlocks = state.totalCount,
+                                    item = item,
+                                    status = status,
+                                    accent = accent,
+                                    onComplete = { viewModel.completeRound(item.members.map { it.exercise }) },
+                                    onUndo = { viewModel.undoRound(item.members.map { it.exercise }) },
+                                    onFocus = { viewModel.focus(item) },
+                                    onImageClick = onImageClick
+                                )
+                            }
+                        }
                     }
                 }
             }
-
-            item(key = "bottom-spacer") { Spacer(modifier = Modifier.height(8.dp)) }
         }
 
         AnimatedVisibility(
-            visible = showSessionComplete,
-            enter = fadeIn(),
-            exit = fadeOut(),
+            visible = allComplete && !dismissed,
+            enter = fadeIn(Motion.enter()),
+            exit = fadeOut(Motion.exit())
         ) {
             SessionCompleteOverlay(
+                planTitle = state.planTitle,
+                totalSets = state.totalSets,
+                totalExercises = state.totalCount,
                 onStay = { dismissed = true },
                 onSwitchProgram = {
                     dismissed = true
                     onSwitchProgram()
-                },
+                }
             )
         }
     }
@@ -219,10 +277,13 @@ fun TodayScreen(
     if (restVisible) {
         RestTimerDialog(
             timer = timer,
-            initialSeconds = restDefault,
+            initialSeconds = if (restAuto.enabled) restAuto.seconds else restDefault,
+            autoRest = restAuto,
+            onAutoRestChange = viewModel::setAutoRest,
             onStart = viewModel::startRest,
+            onExtend = viewModel::extendRest,
             onCancelRunning = viewModel::cancelRest,
-            onClose = viewModel::dismissRest,
+            onClose = viewModel::dismissRest
         )
     }
 
@@ -231,731 +292,838 @@ fun TodayScreen(
             FullscreenImageDialog(
                 imageName = image,
                 title = exercise.name,
-                onDismiss = { enlarged = null },
+                onDismiss = { enlarged = null }
             )
         }
     }
 }
 
-private fun isItemFinished(item: TodayItem): Boolean = when (item) {
-    is TodayItem.Single -> item.entry.completed >= item.entry.exercise.sets
-    is TodayItem.Superset -> item.completedRounds >= item.totalRounds
-}
-
-private enum class CardStatus { DONE, ACTIVE, UPCOMING }
-
 @Composable
-private fun TodayProgressCard(done: Int, total: Int, progress: Float) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+private fun TodayHeader(date: LocalDate, planTitle: String?) {
+    val colors = DarmixTheme.colors
+    val dayName = remember(date) {
+        date.dayOfWeek.getDisplayName(TextStyle.FULL, MexicoLocale)
+    }
+    val meta = remember(date) {
+        val dayMonth = date.format(DayMonthFormatter).replace(".", "")
+        "$dayName $dayMonth · Semana ${date.get(IsoFields.WEEK_OF_WEEK_BASED_YEAR)}"
+    }
+
+    Column(
+        modifier = Modifier.padding(horizontal = Spacing.screen, vertical = Spacing.sm),
+        verticalArrangement = Arrangement.spacedBy(Spacing.sm + 2.dp)
     ) {
-        Column(
-            modifier = Modifier.padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = "Progreso de hoy",
-                    style = MaterialTheme.typography.titleSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Text(
-                    text = "$done/$total ejercicios",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-            }
-            LinearProgressIndicator(
-                progress = { progress },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(10.dp)
-                    .clip(RoundedCornerShape(50)),
-                color = MaterialTheme.colorScheme.primary,
-                trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                strokeCap = androidx.compose.ui.graphics.StrokeCap.Round,
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+            Box(
+                Modifier
+                    .size(width = 16.dp, height = 3.dp)
+                    .background(colors.voltText, CircleShape)
             )
+            Overline(text = meta, color = colors.textSecondary)
         }
+        Text(
+            text = (planTitle ?: dayName).uppercase(MexicoLocale),
+            style = MaterialTheme.typography.displaySmall,
+            color = colors.textPrimary,
+            maxLines = 3,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 
 @Composable
-private fun RestDayCard() {
-    val primary = MaterialTheme.colorScheme.primary
-    val container = MaterialTheme.colorScheme.surfaceContainerHigh
-    val onSurface = MaterialTheme.colorScheme.onSurface
-    val onSurfaceVariant = MaterialTheme.colorScheme.onSurfaceVariant
-    val outline = MaterialTheme.colorScheme.outline
-
-    // Respiración lenta: la card se siente viva sin distraer.
-    val infinite = rememberInfiniteTransition(label = "rest-breath")
-    val glowScale by infinite.animateFloat(
-        initialValue = 0.92f,
-        targetValue = 1.08f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1400),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "rest-glow-scale",
-    )
-
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(containerColor = container),
-        border = BorderStroke(1.dp, outline.copy(alpha = 0.4f)),
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 24.dp, vertical = 32.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            // ── Luna creciente + anillos + glow que respira ──
-            Box(
-                modifier = Modifier.size(132.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                // Halo ambiental
-                Box(
-                    modifier = Modifier
-                        .size(120.dp)
-                        .graphicsLayer {
-                            scaleX = glowScale
-                            scaleY = glowScale
-                        }
-                        .background(
-                            brush = Brush.radialGradient(
-                                colors = listOf(
-                                    primary.copy(alpha = 0.22f),
-                                    primary.copy(alpha = 0.06f),
-                                    Color.Transparent,
-                                )
-                            ),
-                            shape = CircleShape,
-                        )
-                )
-
-                Canvas(modifier = Modifier.size(112.dp)) {
-                    val c = center
-                    val outerR = size.minDimension / 2f
-                    val midR = outerR * 0.78f
-                    val crescentR = outerR * 0.42f
-
-                    // Anillos concéntricos
-                    drawCircle(
-                        color = primary.copy(alpha = 0.22f),
-                        radius = outerR,
-                        center = c,
-                        style = Stroke(width = 1.dp.toPx()),
-                    )
-                    drawCircle(
-                        color = primary.copy(alpha = 0.40f),
-                        radius = midR,
-                        center = c,
-                        style = Stroke(width = 1.dp.toPx()),
-                    )
-
-                    // Creciente: círculo grande menos círculo desplazado arriba-derecha
-                    val outer = Path().apply {
-                        addOval(Rect(center = c, radius = crescentR))
-                    }
-                    val inner = Path().apply {
-                        addOval(
-                            Rect(
-                                center = c + Offset(crescentR * 0.62f, -crescentR * 0.38f),
-                                radius = crescentR * 0.98f,
-                            )
-                        )
-                    }
-                    val crescent = Path().apply {
-                        op(outer, inner, PathOperation.Difference)
-                    }
-                    drawPath(path = crescent, color = primary)
-                }
-            }
-
-            // Chip de categoría con borde sutil
-            Box(
-                modifier = Modifier
-                    .background(
-                        color = primary.copy(alpha = 0.14f),
-                        shape = RoundedCornerShape(50),
-                    )
-                    .border(
-                        width = 1.dp,
-                        color = primary.copy(alpha = 0.35f),
-                        shape = RoundedCornerShape(50),
-                    )
-                    .padding(horizontal = 12.dp, vertical = 5.dp),
-            ) {
-                Text(
-                    text = "RECUPERACIÓN",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = primary,
-                )
-            }
-
-            // Titular editorial en dos líneas
-            Text(
-                text = "Hoy entrenas\ndescansando",
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.Bold,
-                textAlign = TextAlign.Center,
-                color = onSurface,
-            )
-
-            // Cuerpo
-            Text(
-                text = "El músculo no crece cuando levantas,\ncrece cuando sueltas.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = onSurfaceVariant,
-                textAlign = TextAlign.Center,
-            )
-
-            // Divisor fino
-            Box(
-                modifier = Modifier
-                    .padding(top = 4.dp)
-                    .width(48.dp)
-                    .height(1.dp)
-                    .background(outline.copy(alpha = 0.6f)),
-            )
-
-            // Micro-línea final
-            Text(
-                text = "VUELVE MAÑANA AL 100%",
-                style = MaterialTheme.typography.labelLarge,
-                color = primary.copy(alpha = 0.85f),
-                textAlign = TextAlign.Center,
-            )
-        }
+private fun Scoreboard(state: TodayUiState) {
+    val colors = DarmixTheme.colors
+    val accent = voltAccent(colors)
+    val percent = (state.progress * 100).toInt()
+    val units = remember(state.items) {
+        state.items.map { it.totalUnits to it.completedUnits.coerceAtMost(it.totalUnits) }
     }
-}
+    val message = when {
+        state.completedSets == 0 -> "Primera serie, primer paso. Arranca."
+        state.allComplete -> "Día conquistado. Nada que deber."
+        state.progress >= 0.75f -> "Recta final. No aflojes ahora."
+        state.progress >= 0.5f -> "Pasaste la mitad. Sostén el ritmo."
+        else -> "En marcha. Cada serie cuenta."
+    }
+    val stripe = if (colors.isDark) Color.White.copy(alpha = 0.025f) else Color.Black.copy(alpha = 0.035f)
 
-/**
- * Aviso de rutina completada, dibujado DENTRO de esta pantalla (no como Dialog de sistema).
- * Por eso solo tapa el área de Hoy y la barra de navegación inferior sigue funcionando.
- * No se cierra al tocar fuera de la tarjeta: el fondo consume el toque sin hacer nada.
- */
-@Composable
-private fun SessionCompleteOverlay(
-    onStay: () -> Unit,
-    onSwitchProgram: () -> Unit,
-) {
-    val primary = MaterialTheme.colorScheme.primary
-    val onPrimary = MaterialTheme.colorScheme.onPrimary
-    val container = MaterialTheme.colorScheme.surfaceContainerHigh
-    val onSurface = MaterialTheme.colorScheme.onSurface
-    val onSurfaceVariant = MaterialTheme.colorScheme.onSurfaceVariant
-
-    // Scale-in de entrada (la opacidad ya la maneja AnimatedVisibility del padre).
-    var appeared by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) { appeared = true }
-    val cardScale by animateFloatAsState(
-        targetValue = if (appeared) 1f else 0.88f,
-        animationSpec = tween(durationMillis = 420, easing = FastOutSlowInEasing),
-        label = "complete-card-scale",
-    )
-
-    // Anillo expansivo continuo (efecto "radar").
-    val infinite = rememberInfiniteTransition(label = "complete-rings")
-    val ringPhase by infinite.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1600, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart,
-        ),
-        label = "ring-phase",
-    )
-
-    Box(
+    Column(
         modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.65f))
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = {},
-            ),
-        contentAlignment = Alignment.Center,
-    ) {
-        Card(
-            modifier = Modifier
-                .padding(horizontal = 28.dp)
-                .fillMaxWidth()
-                .graphicsLayer {
-                    scaleX = cardScale
-                    scaleY = cardScale
-                },
-            shape = RoundedCornerShape(32.dp),
-            colors = CardDefaults.cardColors(containerColor = container),
-            border = BorderStroke(1.dp, primary.copy(alpha = 0.25f)),
-            elevation = CardDefaults.cardElevation(defaultElevation = 16.dp),
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 24.dp, vertical = 28.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-            ) {
-
-                // ── Check + anillos expansivos ──
-                Box(
-                    modifier = Modifier.size(140.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    // Glow radial detrás
-                    Box(
-                        modifier = Modifier
-                            .size(110.dp)
-                            .background(
-                                brush = Brush.radialGradient(
-                                    colors = listOf(
-                                        primary.copy(alpha = 0.32f),
-                                        primary.copy(alpha = 0.08f),
-                                        Color.Transparent,
-                                    )
-                                ),
-                                shape = CircleShape,
-                            )
-                    )
-
-                    // Anillos + check dibujados
-                    Canvas(modifier = Modifier.size(140.dp)) {
-                        val c = center
-                        val maxR = size.minDimension / 2f
-
-                        // Anillo expansivo animado (radar)
-                        val r = maxR * ringPhase
-                        val alpha = (1f - ringPhase) * 0.55f
-                        drawCircle(
-                            color = primary.copy(alpha = alpha),
-                            radius = r,
-                            center = c,
-                            style = Stroke(width = 2.dp.toPx()),
-                        )
-
-                        // Anillos estáticos concéntricos
-                        drawCircle(
-                            color = primary.copy(alpha = 0.18f),
-                            radius = maxR * 0.92f,
-                            center = c,
-                            style = Stroke(width = 1.dp.toPx()),
-                        )
-                        drawCircle(
-                            color = primary.copy(alpha = 0.34f),
-                            radius = maxR * 0.76f,
-                            center = c,
-                            style = Stroke(width = 1.dp.toPx()),
-                        )
-                    }
-
-                    // Disco lima con check dibujado
-                    Box(
-                        modifier = Modifier
-                            .size(76.dp)
-                            .background(primary, CircleShape),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Canvas(modifier = Modifier.size(36.dp)) {
-                            val path = Path().apply {
-                                moveTo(size.width * 0.18f, size.height * 0.52f)
-                                lineTo(size.width * 0.42f, size.height * 0.76f)
-                                lineTo(size.width * 0.84f, size.height * 0.26f)
-                            }
-                            drawPath(
-                                path = path,
-                                color = onPrimary,
-                                style = Stroke(
-                                    width = 4.dp.toPx(),
-                                    cap = StrokeCap.Round,
-                                    join = StrokeJoin.Round,
-                                ),
-                            )
-                        }
-                    }
-                }
-
-                // Chip de categoría
-                Box(
-                    modifier = Modifier
-                        .background(
-                            color = primary.copy(alpha = 0.14f),
-                            shape = RoundedCornerShape(50),
-                        )
-                        .border(
-                            width = 1.dp,
-                            color = primary.copy(alpha = 0.35f),
-                            shape = RoundedCornerShape(50),
-                        )
-                        .padding(horizontal = 12.dp, vertical = 5.dp),
-                ) {
-                    Text(
-                        text = "SESIÓN COMPLETA",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = primary,
-                    )
-                }
-
-                // Titular
-                Text(
-                    text = "¡Rutina\ncompletada!",
-                    style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.Bold,
-                    textAlign = TextAlign.Center,
-                    color = onSurface,
-                )
-
-                // Cuerpo
-                Text(
-                    text = "Terminaste todas las series de hoy.\nAhora toca recuperar.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = onSurfaceVariant,
-                    textAlign = TextAlign.Center,
-                )
-
-                Spacer(modifier = Modifier.height(4.dp))
-
-                // CTA principal
-                Button(
-                    onClick = onStay,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(52.dp),
-                    shape = MaterialTheme.shapes.medium,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = primary,
-                        contentColor = onPrimary,
-                    ),
-                ) {
-                    Text(
-                        text = "Seguir aquí",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold,
-                    )
-                }
-
-                // CTA secundario
-                TextButton(
-                    onClick = onSwitchProgram,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text(
-                        text = "Cambiar de programa",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = onSurfaceVariant,
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun ExerciseCard(
-    entry: ExerciseProgress,
-    status: CardStatus,
-    onComplete: () -> Unit,
-    onUndo: () -> Unit,
-    onImageClick: (ExerciseEntity) -> Unit,
-) {
-    val exercise = entry.exercise
-    StatusCardShell(status = status) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            StatusChip(status = status)
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                ExerciseImage(
-                    imageName = exercise.imageUri,
-                    exerciseName = exercise.name,
-                    size = if (status == CardStatus.ACTIVE) 76.dp else 56.dp,
-                    onClick = if (exercise.imageUri != null) ({ onImageClick(exercise) }) else null,
-                )
-                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(
-                        text = exercise.name,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                    )
-                    Text(
-                        text = exercise.reps,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                }
-            }
-            if (status == CardStatus.ACTIVE && exercise.note.isNotBlank()) {
-                TipBox(text = exercise.note)
-            }
-            if (status != CardStatus.UPCOMING || entry.completed > 0) {
-                SetDots(total = exercise.sets, completed = entry.completed, status = status)
-            }
-            ActionRow(
-                label = "Serie ${entry.completed} de ${exercise.sets}",
-                finished = entry.completed >= exercise.sets,
-                canUndo = entry.completed > 0,
-                actionLabel = "Completar serie",
-                emphasized = status == CardStatus.ACTIVE,
-                onComplete = onComplete,
-                onUndo = onUndo,
-            )
-        }
-    }
-}
-
-@Composable
-private fun SupersetCard(
-    item: TodayItem.Superset,
-    status: CardStatus,
-    onComplete: () -> Unit,
-    onUndo: () -> Unit,
-    onImageClick: (ExerciseEntity) -> Unit,
-) {
-    StatusCardShell(status = status) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = "SUPERSERIE",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.secondary,
-                )
-                StatusChip(status = status)
-            }
-            item.members.forEachIndexed { index, member ->
-                if (index > 0) {
-                    Spacer(modifier = Modifier.height(2.dp))
-                }
-                val exercise = member.exercise
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    ExerciseImage(
-                        imageName = exercise.imageUri,
-                        exerciseName = exercise.name,
-                        size = 56.dp,
-                        onClick = if (exercise.imageUri != null) ({ onImageClick(exercise) }) else null,
-                    )
-                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text(
-                            text = exercise.name,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                        )
-                        Text(
-                            text = exercise.reps,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.primary,
-                        )
-                        if (exercise.note.isNotBlank()) {
-                            Text(
-                                text = exercise.note,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
-                }
-            }
-            SetDots(total = item.totalRounds, completed = item.completedRounds, status = status)
-            ActionRow(
-                label = "Ronda ${item.completedRounds} de ${item.totalRounds}",
-                finished = item.completedRounds >= item.totalRounds,
-                canUndo = item.completedRounds > 0,
-                actionLabel = "Completar ronda",
-                emphasized = status == CardStatus.ACTIVE,
-                onComplete = onComplete,
-                onUndo = onUndo,
-            )
-        }
-    }
-}
-
-/** Card base: borde/realce distinto según si el ejercicio está activo, próximo o completado. */
-@Composable
-private fun StatusCardShell(
-    status: CardStatus,
-    content: @Composable () -> Unit,
-) {
-    val containerColor = when (status) {
-        CardStatus.ACTIVE -> MaterialTheme.colorScheme.surfaceContainerHigh
-        CardStatus.DONE -> MaterialTheme.colorScheme.surfaceContainer
-        CardStatus.UPCOMING -> MaterialTheme.colorScheme.surfaceContainer
-    }
-    val borderColor = when (status) {
-        CardStatus.ACTIVE -> MaterialTheme.colorScheme.primary
-        else -> MaterialTheme.colorScheme.outline
-    }
-    val contentAlpha = if (status == CardStatus.UPCOMING) 0.7f else 1f
-
-    Card(
-        modifier = Modifier
+            .padding(horizontal = Spacing.screen, vertical = Spacing.md)
             .fillMaxWidth()
-            .alpha(contentAlpha)
-            .border(
-                width = if (status == CardStatus.ACTIVE) 1.5.dp else 1.dp,
-                color = borderColor.copy(alpha = if (status == CardStatus.ACTIVE) 1f else 0.5f),
-                shape = MaterialTheme.shapes.large,
-            ),
-        shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(containerColor = containerColor),
-        elevation = CardDefaults.cardElevation(
-            defaultElevation = if (status == CardStatus.ACTIVE) 4.dp else 0.dp,
-        ),
-    ) { content() }
-}
-
-@Composable
-private fun StatusChip(status: CardStatus) {
-    val (label, bg, fg) = when (status) {
-        CardStatus.ACTIVE -> Triple(
-            "ACTIVO AHORA",
-            MaterialTheme.colorScheme.primary,
-            MaterialTheme.colorScheme.onPrimary,
-        )
-        CardStatus.DONE -> Triple(
-            "COMPLETADO",
-            SuccessGreen.copy(alpha = 0.18f),
-            SuccessGreen,
-        )
-        CardStatus.UPCOMING -> Triple(
-            "A CONTINUACIÓN",
-            MaterialTheme.colorScheme.surfaceContainerHighest,
-            MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
-    Box(
-        modifier = Modifier
-            .background(bg, RoundedCornerShape(50))
-            .padding(horizontal = 10.dp, vertical = 4.dp)
+            .clip(DarmixShapes.Hero)
+            .background(colors.card)
+            .drawWithCache {
+                val step = 14.dp.toPx()
+                val lines = Path().apply {
+                    var x = -size.height
+                    while (x < size.width) {
+                        moveTo(x, size.height)
+                        lineTo(x + size.height, 0f)
+                        x += step
+                    }
+                }
+                val glowCenter = Offset(size.width, 0f)
+                val glowRadius = size.width * 0.75f
+                val glow = Brush.radialGradient(
+                    listOf(colors.volt.copy(alpha = if (colors.isDark) 0.14f else 0.26f), Color.Transparent),
+                    center = glowCenter,
+                    radius = glowRadius
+                )
+                val stroke = Stroke(1.dp.toPx())
+                onDrawBehind {
+                    drawPath(lines, stripe, style = stroke)
+                    drawCircle(glow, radius = glowRadius, center = glowCenter)
+                }
+            }
+            .border(1.dp, colors.hairline, DarmixShapes.Hero)
+            .padding(Spacing.xl),
+        verticalArrangement = Arrangement.spacedBy(Spacing.lg)
     ) {
-        Text(text = label, style = MaterialTheme.typography.labelMedium, color = fg)
+        Row(verticalAlignment = Alignment.Bottom) {
+            Column(modifier = Modifier.weight(1f)) {
+                Overline(text = "Series del día", color = colors.textTertiary)
+                Spacer(Modifier.height(Spacing.xs))
+                Row(verticalAlignment = Alignment.Bottom) {
+                    AnimatedContent(
+                        targetState = state.completedSets,
+                        transitionSpec = {
+                            val up = targetState > initialState
+                            (slideInVertically { if (up) it else -it } + fadeIn()) togetherWith
+                                    (slideOutVertically { if (up) -it else it } + fadeOut()) using
+                                    SizeTransform(clip = false)
+                        },
+                        label = "sets-counter"
+                    ) { value ->
+                        Text(text = "$value", style = DarmixTextStyles.MetricHero, color = accent.text)
+                    }
+                    Text(
+                        text = "/${state.totalSets}",
+                        style = MaterialTheme.typography.headlineLarge,
+                        color = colors.textTertiary,
+                        modifier = Modifier.padding(start = 4.dp, bottom = 6.dp)
+                    )
+                }
+            }
+            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
+                ScoreStat(value = "$percent%", label = "Completado")
+                ScoreStat(value = "${state.doneCount}/${state.totalCount}", label = "Ejercicios")
+            }
+        }
+
+        DayTicks(
+            units = units,
+            activeIndex = state.activeIndex,
+            fill = accent.fill,
+            track = colors.cardHigh,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(28.dp)
+        )
+
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+            Icon(Icons.Rounded.Bolt, contentDescription = null, tint = accent.text, modifier = Modifier.size(18.dp))
+            Text(text = message, style = MaterialTheme.typography.bodyMedium, color = colors.textSecondary)
+        }
     }
 }
 
 @Composable
-private fun TipBox(text: String) {
+private fun ScoreStat(value: String, label: String) {
+    val colors = DarmixTheme.colors
+    Column(horizontalAlignment = Alignment.End) {
+        Text(text = value, style = DarmixTextStyles.MetricSmall, color = colors.textPrimary)
+        Overline(text = label, color = colors.textTertiary)
+    }
+}
+
+@Composable
+private fun DayTicks(
+    units: List<Pair<Int, Int>>,
+    activeIndex: Int,
+    fill: Color,
+    track: Color,
+    modifier: Modifier = Modifier
+) {
+    Canvas(modifier = modifier) {
+        val totalTicks = units.sumOf { it.first }
+        if (totalTicks == 0) return@Canvas
+        val groupGap = 9.dp.toPx()
+        val tickGap = 3.dp.toPx()
+        val available = size.width - groupGap * (units.size - 1) - tickGap * (totalTicks - units.size)
+        val tickWidth = (available / totalTicks).coerceAtLeast(1f)
+        val radius = CornerRadius(minOf(tickWidth / 2f, 3.dp.toPx()))
+        var x = 0f
+        units.forEachIndexed { group, (total, done) ->
+            repeat(total) { i ->
+                val filled = i < done
+                val next = group == activeIndex && i == done
+                val h = when {
+                    filled -> size.height
+                    next -> size.height * 0.78f
+                    else -> size.height * 0.5f
+                }
+                drawRoundRect(
+                    color = when {
+                        filled -> fill
+                        next -> fill.copy(alpha = 0.4f)
+                        else -> track
+                    },
+                    topLeft = Offset(x, size.height - h),
+                    size = Size(tickWidth, h),
+                    cornerRadius = radius
+                )
+                x += tickWidth + tickGap
+            }
+            x += groupGap - tickGap
+        }
+    }
+}
+
+@Composable
+private fun SectionLabel(blocks: Int, sets: Int) {
+    val colors = DarmixTheme.colors
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(
-                color = MaterialTheme.colorScheme.secondaryContainer,
-                shape = MaterialTheme.shapes.medium,
-            )
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+            .padding(start = Spacing.screen, end = Spacing.screen, top = Spacing.lg, bottom = Spacing.lg),
         verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.md)
     ) {
-        // Text(text = "💡", style = MaterialTheme.typography.bodyMedium)
+        Text(text = "RUTA DEL DÍA", style = MaterialTheme.typography.headlineSmall, color = colors.textPrimary)
+        Box(
+            Modifier
+                .weight(1f)
+                .height(1.dp)
+                .background(colors.hairline)
+        )
+        Overline(text = "$blocks bloques · $sets series", color = colors.textTertiary)
+    }
+}
+
+@Composable
+private fun TimelineRow(
+    status: CardStatus,
+    isFirst: Boolean,
+    isLast: Boolean,
+    accent: Accent,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit
+) {
+    val colors = DarmixTheme.colors
+    val pulse: State<Float>? = if (status == CardStatus.ACTIVE) {
+        rememberInfiniteTransition(label = "node").animateFloat(
+            initialValue = 0f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(tween(1500, easing = LinearEasing)),
+            label = "node-pulse"
+        )
+    } else {
+        null
+    }
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(start = Spacing.sm + 2.dp, end = Spacing.screen)
+            .drawWithCache {
+                val x = RailWidth.toPx() / 2f
+                val y = NodeY.toPx()
+                val lineWidth = 2.dp.toPx()
+                val check = Path().apply {
+                    val s = 5.dp.toPx()
+                    moveTo(x - s * 0.9f, y + s * 0.05f)
+                    lineTo(x - s * 0.25f, y + s * 0.7f)
+                    lineTo(x + s * 0.95f, y - s * 0.6f)
+                }
+                val checkStroke = Stroke(width = 2.2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
+                val reached = accent.fill.copy(alpha = 0.85f)
+                onDrawBehind {
+                    val node = Offset(x, y)
+                    if (!isFirst) {
+                        drawLine(
+                            color = if (status != CardStatus.UPCOMING) reached else colors.hairline,
+                            start = Offset(x, 0f),
+                            end = Offset(x, y),
+                            strokeWidth = lineWidth
+                        )
+                    }
+                    if (!isLast) {
+                        drawLine(
+                            color = if (status == CardStatus.DONE) reached else colors.hairline,
+                            start = Offset(x, y),
+                            end = Offset(x, size.height),
+                            strokeWidth = lineWidth
+                        )
+                    }
+                    when (status) {
+                        CardStatus.DONE -> {
+                            drawCircle(accent.fill, radius = 11.dp.toPx(), center = node)
+                            drawPath(check, accent.onFill, style = checkStroke)
+                        }
+
+                        CardStatus.ACTIVE -> {
+                            val p = pulse?.value ?: 0f
+                            drawCircle(
+                                accent.fill.copy(alpha = (1f - p) * 0.4f),
+                                radius = 11.dp.toPx() + 12.dp.toPx() * p,
+                                center = node
+                            )
+                            drawCircle(colors.canvas, radius = 12.dp.toPx(), center = node)
+                            drawCircle(accent.fill, radius = 12.dp.toPx(), center = node, style = Stroke(3.dp.toPx()))
+                            drawCircle(accent.fill, radius = 5.dp.toPx(), center = node)
+                        }
+
+                        CardStatus.UPCOMING -> {
+                            drawCircle(colors.canvas, radius = 8.dp.toPx(), center = node)
+                            drawCircle(colors.hairlineStrong, radius = 8.dp.toPx(), center = node, style = Stroke(1.5.dp.toPx()))
+                        }
+                    }
+                }
+            }
+    ) {
+        Spacer(Modifier.width(RailWidth + Spacing.sm))
         Box(
             modifier = Modifier
-                .size(6.dp)
-                .background(MaterialTheme.colorScheme.onSecondaryContainer, CircleShape),
+                .weight(1f)
+                .padding(bottom = Spacing.md)
+                .animateContentSize(animationSpec = Motion.snappy())
+        ) {
+            content()
+        }
+    }
+}
+
+@Composable
+private fun FocusShell(accent: Accent, content: @Composable ColumnScope.() -> Unit) {
+    val colors = DarmixTheme.colors
+    val shape = DarmixShapes.Card
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(colors.card)
+            .drawBehind {
+                drawRect(
+                    brush = Brush.verticalGradient(
+                        listOf(accent.fill.copy(alpha = if (colors.isDark) 0.13f else 0.10f), Color.Transparent),
+                        endY = size.height * 0.55f
+                    )
+                )
+            }
+            .border(1.5.dp, accent.fill.copy(alpha = 0.7f), shape)
+            .padding(Spacing.lg),
+        verticalArrangement = Arrangement.spacedBy(Spacing.md + 2.dp),
+        content = content
+    )
+}
+
+@Composable
+private fun FocusTopBar(position: Int, totalBlocks: Int, accent: Accent, label: String? = null) {
+    val colors = DarmixTheme.colors
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+        StatusTag(text = "Ahora", container = accent.fill, content = accent.onFill, pulse = true)
+        if (label != null) {
+            StatusTag(
+                text = label,
+                container = accent.fill.copy(alpha = 0.14f),
+                content = accent.text,
+                icon = Icons.Rounded.Repeat
+            )
+        }
+        Spacer(Modifier.weight(1f))
+        Overline(text = "Bloque $position de $totalBlocks", color = colors.textTertiary)
+    }
+}
+
+@Composable
+private fun FocusActions(
+    unitLabel: String,
+    completed: Int,
+    accent: Accent,
+    useAccentButton: Boolean,
+    onComplete: () -> Unit,
+    onUndo: () -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.sm + 2.dp)
+    ) {
+        DarmixIconButton(
+            icon = Icons.AutoMirrored.Rounded.Undo,
+            contentDescription = "Deshacer",
+            onClick = onUndo,
+            enabled = completed > 0,
+            size = 58.dp
+        )
+        DarmixButton(
+            text = "COMPLETAR ${unitLabel.uppercase()} ${completed + 1}",
+            onClick = onComplete,
+            icon = Icons.Rounded.Check,
+            height = 58.dp,
+            containerColor = if (useAccentButton) accent.fill else Color.Unspecified,
+            contentColor = if (useAccentButton) accent.onFill else Color.Unspecified,
+            modifier = Modifier.weight(1f)
+        )
+    }
+}
+
+@Composable
+private fun TipBox(text: String, accent: Accent) {
+    val colors = DarmixTheme.colors
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(DarmixShapes.Control)
+            .background(colors.cardRaised)
+            .drawBehind {
+                drawRect(accent.fill, size = Size(3.dp.toPx(), size.height))
+            }
+            .padding(start = Spacing.md + 3.dp, end = Spacing.md, top = Spacing.md - 2.dp, bottom = Spacing.md - 2.dp),
+        horizontalArrangement = Arrangement.spacedBy(Spacing.sm + 2.dp),
+        verticalAlignment = Alignment.Top
+    ) {
+        Icon(
+            Icons.Rounded.Lightbulb,
+            contentDescription = null,
+            tint = accent.text,
+            modifier = Modifier
+                .padding(top = 1.dp)
+                .size(16.dp)
         )
         Text(
             text = text,
             style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSecondaryContainer,
-            modifier = Modifier.weight(1f),
+            color = colors.textPrimary,
+            modifier = Modifier.weight(1f)
         )
     }
 }
 
 @Composable
-private fun SetDots(total: Int, completed: Int, status: CardStatus) {
-    if (total <= 0) return
-    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        repeat(total) { index ->
-            val isDone = index < completed
-            val isCurrent = index == completed && status == CardStatus.ACTIVE
-            val color = when {
-                isDone -> MaterialTheme.colorScheme.primary
-                isCurrent -> MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)
-                else -> MaterialTheme.colorScheme.surfaceContainerHighest
-            }
-            Box(
-                modifier = Modifier
-                    .size(if (isCurrent) 12.dp else 10.dp)
-                    .background(color, CircleShape)
-                    .then(
-                        if (isCurrent) Modifier.border(1.5.dp, MaterialTheme.colorScheme.primary, CircleShape)
-                        else Modifier
+private fun SingleBlock(
+    position: Int,
+    totalBlocks: Int,
+    entry: ExerciseProgress,
+    status: CardStatus,
+    accent: Accent,
+    onComplete: () -> Unit,
+    onUndo: () -> Unit,
+    onFocus: () -> Unit,
+    onImageClick: (ExerciseEntity) -> Unit
+) {
+    val exercise = entry.exercise
+    val imageClick: (() -> Unit)? = if (exercise.imageUri != null) ({ onImageClick(exercise) }) else null
+    when (status) {
+        CardStatus.DONE -> DoneRow(
+            title = exercise.name,
+            detail = "${exercise.sets}/${exercise.sets} series",
+            accent = accent,
+            onUndo = onUndo
+        )
+
+        CardStatus.UPCOMING -> UpcomingRow(
+            title = exercise.name,
+            detail = "${exercise.sets} × ${exercise.reps}",
+            total = exercise.sets,
+            completed = entry.completed,
+            accent = accent,
+            image = {
+                ExerciseImage(imageName = exercise.imageUri, exerciseName = exercise.name, size = 54.dp, onClick = imageClick)
+            },
+            onStart = onFocus
+        )
+
+        CardStatus.ACTIVE -> FocusShell(accent = accent) {
+            FocusTopBar(position = position, totalBlocks = totalBlocks, accent = accent)
+            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.md + 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                ExerciseImage(imageName = exercise.imageUri, exerciseName = exercise.name, size = 92.dp, onClick = imageClick)
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                    Text(
+                        text = exercise.name,
+                        style = MaterialTheme.typography.titleLarge,
+                        color = DarmixTheme.colors.textPrimary,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis
                     )
+                    Row(horizontalArrangement = Arrangement.spacedBy(Spacing.xs + 2.dp)) {
+                        InfoChip(text = "${exercise.sets} series")
+                        InfoChip(text = exercise.reps, content = accent.text)
+                    }
+                }
+            }
+            if (exercise.note.isNotBlank()) TipBox(text = exercise.note, accent = accent)
+            SetBoxes(total = exercise.sets, completed = entry.completed, accent = accent.fill, onAccent = accent.onFill)
+            FocusActions(
+                unitLabel = "Serie",
+                completed = entry.completed,
+                accent = accent,
+                useAccentButton = false,
+                onComplete = onComplete,
+                onUndo = onUndo
             )
         }
     }
 }
 
 @Composable
-private fun ActionRow(
-    label: String,
-    finished: Boolean,
-    canUndo: Boolean,
-    actionLabel: String,
-    emphasized: Boolean,
+private fun SupersetBlock(
+    position: Int,
+    totalBlocks: Int,
+    item: TodayItem.Superset,
+    status: CardStatus,
+    accent: Accent,
     onComplete: () -> Unit,
     onUndo: () -> Unit,
+    onFocus: () -> Unit,
+    onImageClick: (ExerciseEntity) -> Unit
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(
-            text = if (finished) "$label ✓" else label,
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.Bold,
-            color = if (finished) SuccessGreen else MaterialTheme.colorScheme.onSurface,
+    val names = remember(item.members) { item.members.joinToString(" + ") { it.exercise.name } }
+    when (status) {
+        CardStatus.DONE -> DoneRow(
+            title = names,
+            detail = "Superserie · ${item.totalRounds}/${item.totalRounds} rondas",
+            accent = accent,
+            onUndo = onUndo
         )
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            OutlinedButton(
-                onClick = onUndo,
-                enabled = canUndo,
-                shape = MaterialTheme.shapes.medium,
-                colors = ButtonDefaults.outlinedButtonColors( // ✅ Usa ButtonDefaults en lugar de OutlinedButtonDefaults
-                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                ),
-                modifier = Modifier.width(56.dp),
-            ) { Text("−", fontWeight = FontWeight.Bold) }
 
-            Button(
-                onClick = onComplete,
-                enabled = !finished,
-                shape = MaterialTheme.shapes.medium,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (emphasized) MaterialTheme.colorScheme.primary
-                    else MaterialTheme.colorScheme.surfaceContainerHighest,
-                    contentColor = if (emphasized) MaterialTheme.colorScheme.onPrimary
-                    else MaterialTheme.colorScheme.onSurface,
-                    disabledContainerColor = SuccessGreen.copy(alpha = 0.18f),
-                    disabledContentColor = SuccessGreen,
-                ),
+        CardStatus.UPCOMING -> UpcomingRow(
+            title = names,
+            detail = "Superserie · ${item.totalRounds} rondas",
+            total = item.totalRounds,
+            completed = item.completedRounds,
+            accent = accent,
+            image = { SupersetBadge(count = item.members.size, accent = accent) },
+            onStart = onFocus
+        )
+
+        CardStatus.ACTIVE -> FocusShell(accent = accent) {
+            FocusTopBar(position = position, totalBlocks = totalBlocks, accent = accent, label = "Superserie")
+            Column {
+                item.members.forEachIndexed { index, member ->
+                    SupersetMemberRow(
+                        letter = ('A' + index).toString(),
+                        exercise = member.exercise,
+                        isFirst = index == 0,
+                        isLast = index == item.members.lastIndex,
+                        accent = accent,
+                        onImageClick = onImageClick
+                    )
+                }
+            }
+            SetBoxes(total = item.totalRounds, completed = item.completedRounds, accent = accent.fill, onAccent = accent.onFill)
+            FocusActions(
+                unitLabel = "Ronda",
+                completed = item.completedRounds,
+                accent = accent,
+                useAccentButton = true,
+                onComplete = onComplete,
+                onUndo = onUndo
+            )
+        }
+    }
+}
+
+@Composable
+private fun SupersetBadge(count: Int, accent: Accent) {
+    Box(
+        modifier = Modifier
+            .size(54.dp)
+            .clip(DarmixShapes.Control)
+            .background(accent.fill.copy(alpha = 0.14f))
+            .border(1.dp, accent.fill.copy(alpha = 0.4f), DarmixShapes.Control),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(text = "×$count", style = DarmixTextStyles.MetricSmall, color = accent.text)
+    }
+}
+
+@Composable
+private fun SupersetMemberRow(
+    letter: String,
+    exercise: ExerciseEntity,
+    isFirst: Boolean,
+    isLast: Boolean,
+    accent: Accent,
+    onImageClick: (ExerciseEntity) -> Unit
+) {
+    val colors = DarmixTheme.colors
+    val rail = accent.fill.copy(alpha = 0.45f)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(80.dp),
+        horizontalArrangement = Arrangement.spacedBy(Spacing.md),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .width(26.dp)
+                .height(80.dp)
+                .drawBehind {
+                    val x = size.width / 2f
+                    val mid = size.height / 2f
+                    val w = 2.dp.toPx()
+                    if (!isFirst) drawLine(rail, Offset(x, 0f), Offset(x, mid), w)
+                    if (!isLast) drawLine(rail, Offset(x, mid), Offset(x, size.height), w)
+                },
+            contentAlignment = Alignment.Center
+        ) {
+            Box(
                 modifier = Modifier
-                    .weight(1f)
-                    .height(48.dp),
+                    .size(26.dp)
+                    .clip(DarmixShapes.Tag)
+                    .background(accent.fill),
+                contentAlignment = Alignment.Center
             ) {
+                Text(text = letter, style = MaterialTheme.typography.labelLarge, color = accent.onFill)
+            }
+        }
+        ExerciseImage(
+            imageName = exercise.imageUri,
+            exerciseName = exercise.name,
+            size = 60.dp,
+            onClick = if (exercise.imageUri != null) ({ onImageClick(exercise) }) else null
+        )
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                text = exercise.name,
+                style = MaterialTheme.typography.titleMedium,
+                color = colors.textPrimary,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(text = exercise.reps, style = MaterialTheme.typography.bodyMedium, color = accent.text, maxLines = 1)
+            if (exercise.note.isNotBlank()) {
                 Text(
-                    text = if (finished) "Completado" else actionLabel,
-                    fontWeight = FontWeight.Bold,
+                    text = exercise.note,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = colors.textSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
         }
     }
 }
+
+@Composable
+private fun UpcomingRow(
+    title: String,
+    detail: String,
+    total: Int,
+    completed: Int,
+    accent: Accent,
+    image: @Composable () -> Unit,
+    onStart: () -> Unit
+) {
+    val colors = DarmixTheme.colors
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(DarmixShapes.Card)
+            .background(colors.card)
+            .border(1.dp, colors.hairline, DarmixShapes.Card)
+            .padding(Spacing.md),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.md)
+    ) {
+        Box(Modifier.graphicsLayer { alpha = 0.75f }) { image() }
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                color = colors.textPrimary,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = if (completed > 0) "$detail · $completed/$total hechas" else detail,
+                style = MaterialTheme.typography.bodySmall,
+                color = colors.textSecondary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            if (completed > 0) {
+                SetMeter(
+                    total = total,
+                    completed = completed,
+                    accent = accent.fill.copy(alpha = 0.6f),
+                    height = 4.dp,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
+        }
+        DarmixButton(
+            text = if (completed > 0) "Seguir" else "Empezar",
+            onClick = onStart,
+            icon = Icons.Rounded.PlayArrow,
+            style = DarmixButtonStyle.Ghost,
+            contentColor = colors.textPrimary,
+            height = 40.dp,
+            shape = CircleShape,
+            haptic = HapticFeedbackType.ContextClick
+        )
+    }
+}
+
+@Composable
+private fun DoneRow(title: String, detail: String, accent: Accent, onUndo: () -> Unit) {
+    val colors = DarmixTheme.colors
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(DarmixShapes.Card)
+            .background(colors.canvasDeep)
+            .border(1.dp, colors.hairline, DarmixShapes.Card)
+            .padding(start = Spacing.lg, end = Spacing.sm, top = Spacing.sm + 2.dp, bottom = Spacing.sm + 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.md)
+    ) {
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleSmall,
+                color = colors.textSecondary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(text = detail, style = MaterialTheme.typography.bodySmall, color = accent.text)
+        }
+        DarmixIconButton(
+            icon = Icons.AutoMirrored.Rounded.Undo,
+            contentDescription = "Deshacer última serie",
+            onClick = onUndo,
+            style = DarmixButtonStyle.Secondary,
+            size = 38.dp,
+            shape = CircleShape
+        )
+    }
+}
+
+@Composable
+private fun SkeletonCard() {
+    val colors = DarmixTheme.colors
+    val transition = rememberInfiniteTransition(label = "skeleton")
+    val shimmer = transition.animateFloat(
+        initialValue = -1f,
+        targetValue = 2f,
+        animationSpec = infiniteRepeatable(tween(1300, easing = LinearEasing)),
+        label = "shimmer"
+    )
+    Box(
+        modifier = Modifier
+            .padding(horizontal = Spacing.screen, vertical = Spacing.sm)
+            .fillMaxWidth()
+            .height(140.dp)
+            .clip(DarmixShapes.Card)
+            .background(colors.card)
+            .drawBehind {
+                val x = size.width * shimmer.value
+                drawRect(
+                    brush = Brush.linearGradient(
+                        colors = listOf(Color.Transparent, colors.cardHigh, Color.Transparent),
+                        start = Offset(x - size.width * 0.4f, 0f),
+                        end = Offset(x + size.width * 0.4f, size.height)
+                    )
+                )
+            }
+    )
+}
+
+@Composable
+private fun RestDayCard() {
+    val colors = DarmixTheme.colors
+    val transition = rememberInfiniteTransition(label = "rest")
+    val breath = transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(2600), RepeatMode.Reverse),
+        label = "breath"
+    )
+    val stars = remember {
+        listOf(
+            Triple(0.14f, 0.22f, 0.0f),
+            Triple(0.84f, 0.18f, 0.33f),
+            Triple(0.78f, 0.80f, 0.66f),
+            Triple(0.20f, 0.76f, 0.5f),
+            Triple(0.50f, 0.06f, 0.15f)
+        )
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(DarmixShapes.Hero)
+            .background(Brush.verticalGradient(listOf(colors.tideSoft, colors.card)))
+            .border(1.dp, colors.tide.copy(alpha = 0.25f), DarmixShapes.Hero)
+            .padding(horizontal = Spacing.xxl, vertical = Spacing.xxxl),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(Spacing.lg)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(150.dp)
+                .drawWithCache {
+                    val c = size.center
+                    val crescentR = size.minDimension * 0.22f
+                    val crescent = Path().apply {
+                        op(
+                            Path().apply { addOval(Rect(c, crescentR)) },
+                            Path().apply { addOval(Rect(c + Offset(crescentR * 0.62f, -crescentR * 0.38f), crescentR * 0.98f)) },
+                            PathOperation.Difference
+                        )
+                    }
+                    val ring = Stroke(width = 1.dp.toPx())
+                    onDrawBehind {
+                        val b = breath.value
+                        val glowR = size.minDimension * (0.40f + b * 0.06f)
+                        drawCircle(
+                            brush = Brush.radialGradient(
+                                listOf(colors.tide.copy(alpha = 0.26f), Color.Transparent),
+                                center = c,
+                                radius = glowR
+                            ),
+                            radius = glowR,
+                            center = c
+                        )
+                        drawCircle(colors.tide.copy(alpha = 0.18f), radius = size.minDimension * 0.48f, center = c, style = ring)
+                        drawCircle(colors.tide.copy(alpha = 0.34f), radius = size.minDimension * 0.36f, center = c, style = ring)
+                        stars.forEach { (sx, sy, offset) ->
+                            val twinkle = (b + offset) % 1f
+                            drawCircle(
+                                color = colors.tide.copy(alpha = 0.25f + twinkle * 0.6f),
+                                radius = 1.5.dp.toPx() + twinkle * 1.dp.toPx(),
+                                center = Offset(size.width * sx, size.height * sy)
+                            )
+                        }
+                        drawPath(crescent, colors.tide)
+                    }
+                }
+        )
+
+        StatusTag(text = "Recuperación", container = colors.tide.copy(alpha = 0.16f), content = colors.tideText)
+
+        Text(
+            text = "HOY ENTRENAS\nDESCANSANDO",
+            style = MaterialTheme.typography.headlineLarge,
+            color = colors.textPrimary,
+            textAlign = TextAlign.Center
+        )
+        Text(
+            text = "El músculo no crece cuando levantas,\ncrece cuando sueltas.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = colors.textSecondary,
+            textAlign = TextAlign.Center
+        )
+        Box(
+            Modifier
+                .width(40.dp)
+                .height(2.dp)
+                .background(colors.tide.copy(alpha = 0.5f), CircleShape)
+        )
+        Overline(text = "Vuelve mañana al 100%", color = colors.tideText)
+    }
+}
+

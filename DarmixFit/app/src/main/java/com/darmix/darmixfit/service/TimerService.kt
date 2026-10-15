@@ -14,6 +14,7 @@ import android.os.PowerManager
 import android.os.SystemClock
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import com.darmix.darmixfit.R
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -21,14 +22,17 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class TimerService : Service() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var countdownJob: Job? = null
+    private var upNextJob: Job? = null
     private var wakeLock: PowerManager.WakeLock? = null
     private var alarmSound: AlarmSound? = null
     private var beeping = false
+    private var upNext: String? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -39,10 +43,15 @@ class TimerService : Service() {
             TimerStore.cancel()
             RestTimer.cancelAlarm(this)
             finish()
+            SessionNotifier.refresh(this)
             return START_NOT_STICKY
         }
 
-        // Toda llamada a startForegroundService debe llamar a startForeground de inmediato.
+        if (action == ACTION_EXTEND) {
+            RestTimer.extend(this)
+            return START_NOT_STICKY
+        }
+
         val state = TimerStore.state.value
         startInForeground(buildNotification(state, finished = action == ACTION_FIRE))
 
@@ -51,7 +60,7 @@ class TimerService : Service() {
     }
 
     private fun beginCountdown(state: TimerState) {
-        if (beeping) { // se inició un descanso nuevo mientras aún sonaba el anterior
+        if (beeping) {
             alarmSound?.release()
             alarmSound = null
             beeping = false
@@ -61,10 +70,11 @@ class TimerService : Service() {
             return
         }
         acquireWakeLock(state.endAtElapsed - SystemClock.elapsedRealtime() + 15_000L)
+        loadUpNext()
         countdownJob?.cancel()
         countdownJob = scope.launch {
             while (true) {
-                if (!TimerStore.state.value.active) return@launch // cancelado
+                if (!TimerStore.state.value.active) return@launch
                 val remaining = state.endAtElapsed - SystemClock.elapsedRealtime()
                 if (remaining <= 0) break
                 delay(minOf(remaining, 500L))
@@ -73,9 +83,28 @@ class TimerService : Service() {
         }
     }
 
+    private fun loadUpNext() {
+        upNextJob?.cancel()
+        upNextJob = scope.launch {
+            val snapshot = withContext(Dispatchers.IO) {
+                runCatching { WorkoutSession.snapshot(this@TimerService) }.getOrNull()
+            }
+            val step = snapshot?.step ?: return@launch
+            val unit = if (step.isSuperset) "Ronda" else "Serie"
+            val label = "Sigue: $unit ${step.setNumber} de ${step.totalSets} · ${step.title}"
+            if (label == upNext) return@launch
+            upNext = label
+            val current = TimerStore.state.value
+            if (!beeping && current.active) {
+                getSystemService(NotificationManager::class.java)
+                    .notify(NOTIF_ID, buildNotification(current, finished = false))
+            }
+        }
+    }
+
     private fun fireNow() {
         if (beeping) return
-        if (!TimerStore.tryComplete()) { // otro camino ya lo atendió
+        if (!TimerStore.tryComplete()) {
             finish()
             return
         }
@@ -85,13 +114,16 @@ class TimerService : Service() {
         acquireWakeLock(SOUND_MS + 10_000L)
         getSystemService(NotificationManager::class.java)
             .notify(NOTIF_ID, buildNotification(TimerState(), finished = true))
+        SessionNotifier.refresh(this, "Descanso terminado")
         alarmSound = AlarmSound(this).also { it.play(SOUND_MS) { finish() } }
     }
 
     private fun finish() {
         countdownJob?.cancel()
+        upNextJob?.cancel()
         alarmSound?.release()
         alarmSound = null
+        beeping = false
         releaseWakeLock()
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
@@ -123,33 +155,41 @@ class TimerService : Service() {
     private fun buildNotification(state: TimerState, finished: Boolean): Notification {
         ensureChannel()
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
-            .setContentTitle("Descanso")
+            .setSmallIcon(R.drawable.ic_notification)
+            .setColor(SessionNotifier.ACCENT)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setSilent(true)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
 
-        packageManager.getLaunchIntentForPackage(packageName)?.let { launch ->
-            builder.setContentIntent(
-                PendingIntent.getActivity(this, 0, launch, PendingIntent.FLAG_IMMUTABLE)
-            )
-        }
+        SessionNotifier.openIntent(this)?.let { builder.setContentIntent(it) }
 
         if (finished || !state.active) {
-            builder.setContentText("¡Descanso terminado!")
+            builder
+                .setContentTitle("¡Descanso terminado!")
+                .setContentText("A por la siguiente serie")
         } else {
             val remaining = (state.endAtElapsed - SystemClock.elapsedRealtime()).coerceAtLeast(0L)
             builder
-                .setContentText("Tiempo restante")
+                .setContentTitle("Descanso en curso")
+                .setContentText(upNext ?: "Respira, ya casi vuelves")
+                .setSubText("${state.totalSeconds} s")
                 .setUsesChronometer(true)
                 .setChronometerCountDown(true)
                 .setShowWhen(true)
                 .setWhen(System.currentTimeMillis() + remaining)
                 .addAction(
                     0,
-                    "Cancelar",
+                    "+${RestTimer.EXTEND_SECONDS} s",
+                    PendingIntent.getService(
+                        this, 2, intent(this, ACTION_EXTEND), PendingIntent.FLAG_IMMUTABLE
+                    )
+                )
+                .addAction(
+                    0,
+                    "Saltar",
                     PendingIntent.getService(
                         this, 1, intent(this, ACTION_CANCEL), PendingIntent.FLAG_IMMUTABLE
                     )
@@ -160,15 +200,20 @@ class TimerService : Service() {
 
     private fun ensureChannel() {
         val manager = getSystemService(NotificationManager::class.java)
+        if (manager.getNotificationChannel(LEGACY_CHANNEL_ID) != null) {
+            manager.deleteNotificationChannel(LEGACY_CHANNEL_ID)
+        }
         if (manager.getNotificationChannel(CHANNEL_ID) == null) {
             val channel = NotificationChannel(
                 CHANNEL_ID,
                 "Temporizador de descanso",
-                NotificationManager.IMPORTANCE_LOW
+                NotificationManager.IMPORTANCE_DEFAULT
             ).apply {
                 description = "Cuenta regresiva del descanso entre series"
-                setSound(null, null) // el sonido lo reproducimos nosotros por el canal de alarma
+                setSound(null, null)
+                enableVibration(false)
                 setShowBadge(false)
+                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
             }
             manager.createNotificationChannel(channel)
         }
@@ -193,9 +238,11 @@ class TimerService : Service() {
         const val ACTION_START = "com.darmix.darmixfit.action.TIMER_START"
         const val ACTION_FIRE = "com.darmix.darmixfit.action.TIMER_FIRE"
         const val ACTION_CANCEL = "com.darmix.darmixfit.action.TIMER_CANCEL"
+        const val ACTION_EXTEND = "com.darmix.darmixfit.action.TIMER_EXTEND"
 
         private const val TAG = "TimerService"
-        private const val CHANNEL_ID = "rest_timer"
+        private const val CHANNEL_ID = "rest_countdown"
+        private const val LEGACY_CHANNEL_ID = "rest_timer"
         private const val NOTIF_ID = 1001
         private const val SOUND_MS = 3_000L
 

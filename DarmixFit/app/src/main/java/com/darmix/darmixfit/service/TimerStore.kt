@@ -11,17 +11,12 @@ import kotlinx.coroutines.flow.asStateFlow
 
 data class TimerState(
     val active: Boolean = false,
-    /** Momento de fin, medido con SystemClock.elapsedRealtime(). */
     val endAtElapsed: Long = 0L,
-    val totalSeconds: Int = 0,
+    val totalSeconds: Int = 0
 )
 
-/**
- * Fuente única de verdad del temporizador. Se guarda en disco para que el servicio
- * y la alarma puedan leerla aunque el proceso haya sido reiniciado.
- */
 object TimerStore {
-    private const val PREFS = "fitflow_timer"
+    private const val PREFS = "darmixfit_timer"
     private const val K_ACTIVE = "active"
     private const val K_END = "end_at_elapsed"
     private const val K_TOTAL = "total_seconds"
@@ -45,10 +40,22 @@ object TimerStore {
         val s = TimerState(
             active = true,
             endAtElapsed = SystemClock.elapsedRealtime() + seconds * 1000L,
-            totalSeconds = seconds,
+            totalSeconds = seconds
         )
         persist(s)
         return s
+    }
+
+    @Synchronized
+    fun extend(seconds: Int): TimerState? {
+        val current = _state.value
+        if (!current.active || current.endAtElapsed <= SystemClock.elapsedRealtime()) return null
+        val next = current.copy(
+            endAtElapsed = current.endAtElapsed + seconds * 1000L,
+            totalSeconds = current.totalSeconds + seconds
+        )
+        persist(next)
+        return next
     }
 
     @Synchronized
@@ -56,7 +63,6 @@ object TimerStore {
         if (_state.value.active) persist(TimerState())
     }
 
-    /** Devuelve true solo para el primer llamador; así el sonido nunca se dispara dos veces. */
     @Synchronized
     fun tryComplete(): Boolean {
         if (!_state.value.active) return false
@@ -64,7 +70,6 @@ object TimerStore {
         return true
     }
 
-    /** Descarta (en silencio) un temporizador que terminó hace mucho y nadie atendió. */
     @Synchronized
     fun expireIfStale(graceMs: Long = 15_000L) {
         val s = _state.value
@@ -82,7 +87,6 @@ object TimerStore {
         val total = prefs.getInt(K_TOTAL, 0)
         val sameBoot = prefs.getInt(K_BOOT, -1) == bootCount()
         val remaining = end - SystemClock.elapsedRealtime()
-        // Si el teléfono se reinició, elapsedRealtime empezó de cero y el dato ya no sirve.
         if (!sameBoot || remaining > total * 1000L + 5_000L) {
             persist(TimerState())
             return TimerState()

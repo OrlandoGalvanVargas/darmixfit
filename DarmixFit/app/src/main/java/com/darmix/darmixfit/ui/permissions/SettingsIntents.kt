@@ -37,18 +37,16 @@ object SettingsIntents {
         startFirstAvailable(context, direct, general, appDetails(context))
     }
 
-    fun openXiaomiAutostart(context: Context) {
+    fun openXiaomiAutostart(context: Context): Boolean {
         val autostart = Intent().setComponent(
             ComponentName(
                 "com.miui.securitycenter",
                 "com.miui.permcenter.autostart.AutoStartManagementActivity"
             )
         )
-        startFirstAvailable(context, autostart, appDetails(context))
-    }
-
-    fun openAppDetails(context: Context) {
+        if (startFirstAvailable(context, autostart)) return true
         startFirstAvailable(context, appDetails(context))
+        return false
     }
 
     private fun appDetails(context: Context): Intent =
@@ -57,17 +55,15 @@ object SettingsIntents {
             "package:${context.packageName}".toUri()
         )
 
-    /** Intenta cada intent en orden hasta que uno se pueda abrir. */
-    private fun startFirstAvailable(context: Context, vararg intents: Intent) {
+    private fun startFirstAvailable(context: Context, vararg intents: Intent): Boolean {
         for (intent in intents) {
             try {
                 context.startActivity(intent)
-                return
+                return true
             } catch (_: ActivityNotFoundException) {
-                // probamos el siguiente
             } catch (_: SecurityException) {
-                // probamos el siguiente
             }
         }
+        return false
     }
 }

@@ -38,3 +38,7 @@ Thumbs.db
 .navigation/
 /captures/
 /shelf/
+
+# Kotlin generated files
+.kotlin/
+.kotlin/errors/
