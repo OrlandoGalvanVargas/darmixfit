@@ -41,17 +41,23 @@ class UpdateViewModel(application: Application) : AndroidViewModel(application) 
 
     private var downloadJob: Job? = null
     private var downloadId: Long? = null
+    private var checkJob: Job? = null
 
     init {
-        viewModelScope.launch {
+        refresh()
+    }
+
+    fun refresh() {
+        if (_state.value !is UpdateState.Hidden || checkJob?.isActive == true) return
+        checkJob = viewModelScope.launch {
             val info = UpdateChecker.latest(app) ?: return@launch
-            if (UpdateChecker.shouldPrompt(app, info)) _state.value = UpdateState.Available(info)
+            if (_state.value is UpdateState.Hidden && UpdateChecker.shouldPrompt(app, info)) {
+                _state.value = UpdateState.Available(info)
+            }
         }
     }
 
     fun later() {
-        val info = infoOrNull() ?: return
-        UpdateChecker.dismiss(app, info)
         downloadJob?.cancel()
         downloadId?.let { ApkUpdater.cancel(app, it) }
         downloadId = null

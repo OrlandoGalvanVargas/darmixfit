@@ -38,8 +38,6 @@ object UpdateChecker {
     private const val K_APK = "apk_url"
     private const val K_SIZE = "apk_size"
     private const val K_PAGE = "page_url"
-    private const val K_DISMISSED_TAG = "dismissed_tag"
-    private const val K_DISMISSED_AT = "dismissed_at"
 
     suspend fun latest(context: Context): ReleaseInfo? = withContext(Dispatchers.IO) {
         val prefs = prefs(context)
@@ -107,21 +105,8 @@ object UpdateChecker {
         return false
     }
 
-    fun shouldPrompt(context: Context, info: ReleaseInfo): Boolean {
-        if (!isNewer(info.version, currentVersion(context))) return false
-        val prefs = prefs(context)
-        val dismissedTag = prefs.getString(K_DISMISSED_TAG, null)
-        val dismissedAt = prefs.getLong(K_DISMISSED_AT, 0L)
-        val snoozed = dismissedTag == info.tag && System.currentTimeMillis() - dismissedAt in 0 until INTERVAL_MS
-        return !snoozed
-    }
-
-    fun dismiss(context: Context, info: ReleaseInfo) {
-        prefs(context).edit {
-            putString(K_DISMISSED_TAG, info.tag)
-            putLong(K_DISMISSED_AT, System.currentTimeMillis())
-        }
-    }
+    fun shouldPrompt(context: Context, info: ReleaseInfo): Boolean =
+        isNewer(info.version, currentVersion(context))
 
     private fun numbers(version: String): List<Int> =
         Regex("\\d+").findAll(version).mapNotNull { it.value.toIntOrNull() }.toList()

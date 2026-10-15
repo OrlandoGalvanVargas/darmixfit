@@ -63,6 +63,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.net.toUri
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.darmix.darmixfit.data.update.ApkUpdater
@@ -82,6 +84,10 @@ private val MarkdownLink = Regex("\\[(.*?)]\\((.*?)\\)")
 fun UpdatePrompt(viewModel: UpdateViewModel = viewModel()) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val minimized by viewModel.minimized.collectAsStateWithLifecycle()
+
+    LifecycleEventEffect(Lifecycle.Event.ON_START) {
+        viewModel.refresh()
+    }
     val context = LocalContext.current
     val current = state
 
