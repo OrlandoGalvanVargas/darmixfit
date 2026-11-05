@@ -1,7 +1,6 @@
 package com.darmix.darmixfit.ui.today
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -15,10 +14,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -29,18 +25,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.Undo
-import androidx.compose.material.icons.rounded.Check
-import androidx.compose.material.icons.rounded.Lightbulb
-import androidx.compose.material.icons.rounded.PlayArrow
-import androidx.compose.material.icons.rounded.Repeat
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -55,38 +43,23 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.geometry.center
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathOperation
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.darmix.darmixfit.data.ExerciseEntity
-import com.darmix.darmixfit.ui.components.DarmixButton
-import com.darmix.darmixfit.ui.components.DarmixButtonStyle
-import com.darmix.darmixfit.ui.components.DarmixIconButton
-import com.darmix.darmixfit.ui.components.ExerciseImage
 import com.darmix.darmixfit.ui.components.FullscreenImageDialog
-import com.darmix.darmixfit.ui.components.InfoChip
 import com.darmix.darmixfit.ui.components.Overline
-import com.darmix.darmixfit.ui.components.SetBoxes
-import com.darmix.darmixfit.ui.components.SetMeter
 import com.darmix.darmixfit.ui.components.StatusTag
-import com.darmix.darmixfit.ui.theme.DarmixColors
 import com.darmix.darmixfit.ui.theme.DarmixShapes
-import com.darmix.darmixfit.ui.theme.DarmixTextStyles
 import com.darmix.darmixfit.ui.theme.DarmixTheme
 import com.darmix.darmixfit.ui.theme.Motion
 import com.darmix.darmixfit.ui.theme.Spacing
@@ -96,30 +69,6 @@ import kotlinx.coroutines.launch
 
 private const val LEADING_ITEMS = 3
 private const val UNSET = Int.MIN_VALUE
-private val RailWidth = 32.dp
-private val NodeY = 30.dp
-
-private enum class CardStatus { DONE, ACTIVE, UPCOMING }
-
-private data class Accent(val fill: Color, val onFill: Color, val text: Color)
-
-@Composable
-private fun voltAccent(colors: DarmixColors) = remember(colors) {
-    Accent(
-        fill = colors.voltText,
-        onFill = if (colors.isDark) colors.onVolt else Color.White,
-        text = colors.voltText
-    )
-}
-
-@Composable
-private fun tideAccent(colors: DarmixColors) = remember(colors) {
-    Accent(
-        fill = colors.tideText,
-        onFill = if (colors.isDark) colors.onTide else Color.White,
-        text = colors.tideText
-    )
-}
 
 @Composable
 fun TodayScreen(
@@ -203,44 +152,33 @@ fun TodayScreen(
                         contentType = { _, item -> item::class }
                     ) { index, item ->
                         val status = when {
-                            item.isFinished -> CardStatus.DONE
-                            index == state.activeIndex -> CardStatus.ACTIVE
-                            else -> CardStatus.UPCOMING
+                            item.isFinished -> EntryStatus.DONE
+                            index == state.activeIndex -> EntryStatus.ACTIVE
+                            else -> EntryStatus.UPCOMING
                         }
-                        val accent = if (item is TodayItem.Superset) tideAccent(colors) else voltAccent(colors)
-                        TimelineRow(
+                        RoutineEntry(
+                            item = item,
+                            position = index + 1,
+                            totalBlocks = state.totalCount,
                             status = status,
                             isFirst = index == 0,
                             isLast = index == state.items.lastIndex,
-                            accent = accent,
+                            onComplete = {
+                                when (item) {
+                                    is TodayItem.Single -> viewModel.completeSet(item.entry.exercise)
+                                    is TodayItem.Superset -> viewModel.completeRound(item.members.map { it.exercise })
+                                }
+                            },
+                            onUndo = {
+                                when (item) {
+                                    is TodayItem.Single -> viewModel.undoSet(item.entry.exercise)
+                                    is TodayItem.Superset -> viewModel.undoRound(item.members.map { it.exercise })
+                                }
+                            },
+                            onFocus = { viewModel.focus(item) },
+                            onImageClick = onImageClick,
                             modifier = Modifier.animateItem()
-                        ) {
-                            when (item) {
-                                is TodayItem.Single -> SingleBlock(
-                                    position = index + 1,
-                                    totalBlocks = state.totalCount,
-                                    entry = item.entry,
-                                    status = status,
-                                    accent = accent,
-                                    onComplete = { viewModel.completeSet(item.entry.exercise) },
-                                    onUndo = { viewModel.undoSet(item.entry.exercise) },
-                                    onFocus = { viewModel.focus(item) },
-                                    onImageClick = onImageClick
-                                )
-
-                                is TodayItem.Superset -> SupersetBlock(
-                                    position = index + 1,
-                                    totalBlocks = state.totalCount,
-                                    item = item,
-                                    status = status,
-                                    accent = accent,
-                                    onComplete = { viewModel.completeRound(item.members.map { it.exercise }) },
-                                    onUndo = { viewModel.undoRound(item.members.map { it.exercise }) },
-                                    onFocus = { viewModel.focus(item) },
-                                    onImageClick = onImageClick
-                                )
-                            }
-                        }
+                        )
                     }
                 }
             }
@@ -285,506 +223,6 @@ fun TodayScreen(
                 onDismiss = { enlarged = null }
             )
         }
-    }
-}
-
-@Composable
-private fun TimelineRow(
-    status: CardStatus,
-    isFirst: Boolean,
-    isLast: Boolean,
-    accent: Accent,
-    modifier: Modifier = Modifier,
-    content: @Composable () -> Unit
-) {
-    val colors = DarmixTheme.colors
-    val pulse: State<Float>? = if (status == CardStatus.ACTIVE) {
-        rememberInfiniteTransition(label = "node").animateFloat(
-            initialValue = 0f,
-            targetValue = 1f,
-            animationSpec = infiniteRepeatable(tween(1500, easing = LinearEasing)),
-            label = "node-pulse"
-        )
-    } else {
-        null
-    }
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(start = Spacing.sm + 2.dp, end = Spacing.screen)
-            .drawWithCache {
-                val x = RailWidth.toPx() / 2f
-                val y = NodeY.toPx()
-                val lineWidth = 2.dp.toPx()
-                val check = Path().apply {
-                    val s = 5.dp.toPx()
-                    moveTo(x - s * 0.9f, y + s * 0.05f)
-                    lineTo(x - s * 0.25f, y + s * 0.7f)
-                    lineTo(x + s * 0.95f, y - s * 0.6f)
-                }
-                val checkStroke = Stroke(width = 2.2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
-                val reached = accent.fill.copy(alpha = 0.85f)
-                onDrawBehind {
-                    val node = Offset(x, y)
-                    if (!isFirst) {
-                        drawLine(
-                            color = if (status != CardStatus.UPCOMING) reached else colors.hairline,
-                            start = Offset(x, 0f),
-                            end = Offset(x, y),
-                            strokeWidth = lineWidth
-                        )
-                    }
-                    if (!isLast) {
-                        drawLine(
-                            color = if (status == CardStatus.DONE) reached else colors.hairline,
-                            start = Offset(x, y),
-                            end = Offset(x, size.height),
-                            strokeWidth = lineWidth
-                        )
-                    }
-                    when (status) {
-                        CardStatus.DONE -> {
-                            drawCircle(accent.fill, radius = 11.dp.toPx(), center = node)
-                            drawPath(check, accent.onFill, style = checkStroke)
-                        }
-
-                        CardStatus.ACTIVE -> {
-                            val p = pulse?.value ?: 0f
-                            drawCircle(
-                                accent.fill.copy(alpha = (1f - p) * 0.4f),
-                                radius = 11.dp.toPx() + 12.dp.toPx() * p,
-                                center = node
-                            )
-                            drawCircle(colors.canvas, radius = 12.dp.toPx(), center = node)
-                            drawCircle(accent.fill, radius = 12.dp.toPx(), center = node, style = Stroke(3.dp.toPx()))
-                            drawCircle(accent.fill, radius = 5.dp.toPx(), center = node)
-                        }
-
-                        CardStatus.UPCOMING -> {
-                            drawCircle(colors.canvas, radius = 8.dp.toPx(), center = node)
-                            drawCircle(colors.hairlineStrong, radius = 8.dp.toPx(), center = node, style = Stroke(1.5.dp.toPx()))
-                        }
-                    }
-                }
-            }
-    ) {
-        Spacer(Modifier.width(RailWidth + Spacing.sm))
-        Box(
-            modifier = Modifier
-                .weight(1f)
-                .padding(bottom = Spacing.md)
-                .animateContentSize(animationSpec = Motion.snappy())
-        ) {
-            content()
-        }
-    }
-}
-
-@Composable
-private fun FocusShell(accent: Accent, content: @Composable ColumnScope.() -> Unit) {
-    val colors = DarmixTheme.colors
-    val shape = DarmixShapes.Card
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(shape)
-            .background(colors.card)
-            .drawBehind {
-                drawRect(
-                    brush = Brush.verticalGradient(
-                        listOf(accent.fill.copy(alpha = if (colors.isDark) 0.13f else 0.10f), Color.Transparent),
-                        endY = size.height * 0.55f
-                    )
-                )
-            }
-            .border(1.5.dp, accent.fill.copy(alpha = 0.7f), shape)
-            .padding(Spacing.lg),
-        verticalArrangement = Arrangement.spacedBy(Spacing.md + 2.dp),
-        content = content
-    )
-}
-
-@Composable
-private fun FocusTopBar(position: Int, totalBlocks: Int, accent: Accent, label: String? = null) {
-    val colors = DarmixTheme.colors
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-        StatusTag(text = "Ahora", container = accent.fill, content = accent.onFill, pulse = true)
-        if (label != null) {
-            StatusTag(
-                text = label,
-                container = accent.fill.copy(alpha = 0.14f),
-                content = accent.text,
-                icon = Icons.Rounded.Repeat
-            )
-        }
-        Spacer(Modifier.weight(1f))
-        Overline(text = "Bloque $position de $totalBlocks", color = colors.textTertiary)
-    }
-}
-
-@Composable
-private fun FocusActions(
-    unitLabel: String,
-    completed: Int,
-    accent: Accent,
-    useAccentButton: Boolean,
-    onComplete: () -> Unit,
-    onUndo: () -> Unit
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(Spacing.sm + 2.dp)
-    ) {
-        DarmixIconButton(
-            icon = Icons.AutoMirrored.Rounded.Undo,
-            contentDescription = "Deshacer",
-            onClick = onUndo,
-            enabled = completed > 0,
-            size = 58.dp
-        )
-        DarmixButton(
-            text = "COMPLETAR ${unitLabel.uppercase()} ${completed + 1}",
-            onClick = onComplete,
-            icon = Icons.Rounded.Check,
-            height = 58.dp,
-            containerColor = if (useAccentButton) accent.fill else Color.Unspecified,
-            contentColor = if (useAccentButton) accent.onFill else Color.Unspecified,
-            modifier = Modifier.weight(1f)
-        )
-    }
-}
-
-@Composable
-private fun TipBox(text: String, accent: Accent) {
-    val colors = DarmixTheme.colors
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(DarmixShapes.Control)
-            .background(colors.cardRaised)
-            .drawBehind {
-                drawRect(accent.fill, size = Size(3.dp.toPx(), size.height))
-            }
-            .padding(start = Spacing.md + 3.dp, end = Spacing.md, top = Spacing.md - 2.dp, bottom = Spacing.md - 2.dp),
-        horizontalArrangement = Arrangement.spacedBy(Spacing.sm + 2.dp),
-        verticalAlignment = Alignment.Top
-    ) {
-        Icon(
-            Icons.Rounded.Lightbulb,
-            contentDescription = null,
-            tint = accent.text,
-            modifier = Modifier
-                .padding(top = 1.dp)
-                .size(16.dp)
-        )
-        Text(
-            text = text,
-            style = MaterialTheme.typography.bodySmall,
-            color = colors.textPrimary,
-            modifier = Modifier.weight(1f)
-        )
-    }
-}
-
-@Composable
-private fun SingleBlock(
-    position: Int,
-    totalBlocks: Int,
-    entry: ExerciseProgress,
-    status: CardStatus,
-    accent: Accent,
-    onComplete: () -> Unit,
-    onUndo: () -> Unit,
-    onFocus: () -> Unit,
-    onImageClick: (ExerciseEntity) -> Unit
-) {
-    val exercise = entry.exercise
-    val imageClick: (() -> Unit)? = if (exercise.imageUri != null) ({ onImageClick(exercise) }) else null
-    when (status) {
-        CardStatus.DONE -> DoneRow(
-            title = exercise.name,
-            detail = "${exercise.sets}/${exercise.sets} series",
-            accent = accent,
-            onUndo = onUndo
-        )
-
-        CardStatus.UPCOMING -> UpcomingRow(
-            title = exercise.name,
-            detail = "${exercise.sets} × ${exercise.reps}",
-            total = exercise.sets,
-            completed = entry.completed,
-            accent = accent,
-            image = {
-                ExerciseImage(imageName = exercise.imageUri, exerciseName = exercise.name, size = 54.dp, onClick = imageClick)
-            },
-            onStart = onFocus
-        )
-
-        CardStatus.ACTIVE -> FocusShell(accent = accent) {
-            FocusTopBar(position = position, totalBlocks = totalBlocks, accent = accent)
-            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.md + 2.dp), verticalAlignment = Alignment.CenterVertically) {
-                ExerciseImage(imageName = exercise.imageUri, exerciseName = exercise.name, size = 92.dp, onClick = imageClick)
-                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                    Text(
-                        text = exercise.name,
-                        style = MaterialTheme.typography.titleLarge,
-                        color = DarmixTheme.colors.textPrimary,
-                        maxLines = 3,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(Spacing.xs + 2.dp)) {
-                        InfoChip(text = "${exercise.sets} series")
-                        InfoChip(text = exercise.reps, content = accent.text)
-                    }
-                }
-            }
-            if (exercise.note.isNotBlank()) TipBox(text = exercise.note, accent = accent)
-            SetBoxes(total = exercise.sets, completed = entry.completed, accent = accent.fill, onAccent = accent.onFill)
-            FocusActions(
-                unitLabel = "Serie",
-                completed = entry.completed,
-                accent = accent,
-                useAccentButton = false,
-                onComplete = onComplete,
-                onUndo = onUndo
-            )
-        }
-    }
-}
-
-@Composable
-private fun SupersetBlock(
-    position: Int,
-    totalBlocks: Int,
-    item: TodayItem.Superset,
-    status: CardStatus,
-    accent: Accent,
-    onComplete: () -> Unit,
-    onUndo: () -> Unit,
-    onFocus: () -> Unit,
-    onImageClick: (ExerciseEntity) -> Unit
-) {
-    val names = remember(item.members) { item.members.joinToString(" + ") { it.exercise.name } }
-    when (status) {
-        CardStatus.DONE -> DoneRow(
-            title = names,
-            detail = "Superserie · ${item.totalRounds}/${item.totalRounds} rondas",
-            accent = accent,
-            onUndo = onUndo
-        )
-
-        CardStatus.UPCOMING -> UpcomingRow(
-            title = names,
-            detail = "Superserie · ${item.totalRounds} rondas",
-            total = item.totalRounds,
-            completed = item.completedRounds,
-            accent = accent,
-            image = { SupersetBadge(count = item.members.size, accent = accent) },
-            onStart = onFocus
-        )
-
-        CardStatus.ACTIVE -> FocusShell(accent = accent) {
-            FocusTopBar(position = position, totalBlocks = totalBlocks, accent = accent, label = "Superserie")
-            Column {
-                item.members.forEachIndexed { index, member ->
-                    SupersetMemberRow(
-                        letter = ('A' + index).toString(),
-                        exercise = member.exercise,
-                        isFirst = index == 0,
-                        isLast = index == item.members.lastIndex,
-                        accent = accent,
-                        onImageClick = onImageClick
-                    )
-                }
-            }
-            SetBoxes(total = item.totalRounds, completed = item.completedRounds, accent = accent.fill, onAccent = accent.onFill)
-            FocusActions(
-                unitLabel = "Ronda",
-                completed = item.completedRounds,
-                accent = accent,
-                useAccentButton = true,
-                onComplete = onComplete,
-                onUndo = onUndo
-            )
-        }
-    }
-}
-
-@Composable
-private fun SupersetBadge(count: Int, accent: Accent) {
-    Box(
-        modifier = Modifier
-            .size(54.dp)
-            .clip(DarmixShapes.Control)
-            .background(accent.fill.copy(alpha = 0.14f))
-            .border(1.dp, accent.fill.copy(alpha = 0.4f), DarmixShapes.Control),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(text = "×$count", style = DarmixTextStyles.MetricSmall, color = accent.text)
-    }
-}
-
-@Composable
-private fun SupersetMemberRow(
-    letter: String,
-    exercise: ExerciseEntity,
-    isFirst: Boolean,
-    isLast: Boolean,
-    accent: Accent,
-    onImageClick: (ExerciseEntity) -> Unit
-) {
-    val colors = DarmixTheme.colors
-    val rail = accent.fill.copy(alpha = 0.45f)
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(80.dp),
-        horizontalArrangement = Arrangement.spacedBy(Spacing.md),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
-            modifier = Modifier
-                .width(26.dp)
-                .height(80.dp)
-                .drawBehind {
-                    val x = size.width / 2f
-                    val mid = size.height / 2f
-                    val w = 2.dp.toPx()
-                    if (!isFirst) drawLine(rail, Offset(x, 0f), Offset(x, mid), w)
-                    if (!isLast) drawLine(rail, Offset(x, mid), Offset(x, size.height), w)
-                },
-            contentAlignment = Alignment.Center
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(26.dp)
-                    .clip(DarmixShapes.Tag)
-                    .background(accent.fill),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(text = letter, style = MaterialTheme.typography.labelLarge, color = accent.onFill)
-            }
-        }
-        ExerciseImage(
-            imageName = exercise.imageUri,
-            exerciseName = exercise.name,
-            size = 60.dp,
-            onClick = if (exercise.imageUri != null) ({ onImageClick(exercise) }) else null
-        )
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(
-                text = exercise.name,
-                style = MaterialTheme.typography.titleMedium,
-                color = colors.textPrimary,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(text = exercise.reps, style = MaterialTheme.typography.bodyMedium, color = accent.text, maxLines = 1)
-            if (exercise.note.isNotBlank()) {
-                Text(
-                    text = exercise.note,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = colors.textSecondary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun UpcomingRow(
-    title: String,
-    detail: String,
-    total: Int,
-    completed: Int,
-    accent: Accent,
-    image: @Composable () -> Unit,
-    onStart: () -> Unit
-) {
-    val colors = DarmixTheme.colors
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(DarmixShapes.Card)
-            .background(colors.card)
-            .border(1.dp, colors.hairline, DarmixShapes.Card)
-            .padding(Spacing.md),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(Spacing.md)
-    ) {
-        Box(Modifier.graphicsLayer { alpha = 0.75f }) { image() }
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleMedium,
-                color = colors.textPrimary,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                text = if (completed > 0) "$detail · $completed/$total hechas" else detail,
-                style = MaterialTheme.typography.bodySmall,
-                color = colors.textSecondary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            if (completed > 0) {
-                SetMeter(
-                    total = total,
-                    completed = completed,
-                    accent = accent.fill.copy(alpha = 0.6f),
-                    height = 4.dp,
-                    modifier = Modifier.padding(top = 4.dp)
-                )
-            }
-        }
-        DarmixButton(
-            text = if (completed > 0) "Seguir" else "Empezar",
-            onClick = onStart,
-            icon = Icons.Rounded.PlayArrow,
-            style = DarmixButtonStyle.Ghost,
-            contentColor = colors.textPrimary,
-            height = 40.dp,
-            shape = CircleShape,
-            haptic = HapticFeedbackType.ContextClick
-        )
-    }
-}
-
-@Composable
-private fun DoneRow(title: String, detail: String, accent: Accent, onUndo: () -> Unit) {
-    val colors = DarmixTheme.colors
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(DarmixShapes.Card)
-            .background(colors.canvasDeep)
-            .border(1.dp, colors.hairline, DarmixShapes.Card)
-            .padding(start = Spacing.lg, end = Spacing.sm, top = Spacing.sm + 2.dp, bottom = Spacing.sm + 2.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(Spacing.md)
-    ) {
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleSmall,
-                color = colors.textSecondary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(text = detail, style = MaterialTheme.typography.bodySmall, color = accent.text)
-        }
-        DarmixIconButton(
-            icon = Icons.AutoMirrored.Rounded.Undo,
-            contentDescription = "Deshacer última serie",
-            onClick = onUndo,
-            style = DarmixButtonStyle.Secondary,
-            size = 38.dp,
-            shape = CircleShape
-        )
     }
 }
 

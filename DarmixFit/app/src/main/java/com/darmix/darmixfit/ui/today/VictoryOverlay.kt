@@ -305,7 +305,8 @@ internal fun SessionCompleteOverlay(
                     text = "SEGUIR AQUÍ",
                     onClick = onStay,
                     height = 56.dp,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    haptic = null
                 )
                 DarmixButton(
                     text = "Cambiar de programa",
