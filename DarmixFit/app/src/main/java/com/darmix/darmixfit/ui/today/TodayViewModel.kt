@@ -93,6 +93,11 @@ class TodayViewModel(
         .distinctUntilChanged()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), RestTimer.DEFAULT_SECONDS)
 
+    private val _victoryVisible = MutableStateFlow(false)
+    val victoryVisible: StateFlow<Boolean> = _victoryVisible.asStateFlow()
+
+    private var victoryArmed = false
+
     init {
         viewModelScope.launch {
             TimerStore.state
@@ -133,10 +138,27 @@ class TodayViewModel(
         .distinctUntilChanged()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), TodayUiState(date = now()))
 
-    val allDayComplete: StateFlow<Boolean> = uiState
-        .map { it.allComplete }
-        .distinctUntilChanged()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+    init {
+        viewModelScope.launch {
+            combine(
+                baseState.map { it.allComplete }.distinctUntilChanged(),
+                _restVisible,
+                TimerStore.state.map { it.active }.distinctUntilChanged()
+            ) { complete, rest, timing -> Triple(complete, rest, timing) }
+                .collect { (complete, rest, timing) -> resolveVictory(complete, rest || timing) }
+        }
+    }
+
+    private fun resolveVictory(complete: Boolean, resting: Boolean) {
+        if (!complete) _victoryVisible.value = false
+        if (!victoryArmed || resting) return
+        victoryArmed = false
+        if (complete) _victoryVisible.value = true
+    }
+
+    fun dismissVictory() {
+        _victoryVisible.value = false
+    }
 
     private fun buildItems(exercises: List<ExerciseEntity>, progress: Map<Long, Int>): List<TodayItem> {
         val grouped = exercises.filter { it.supersetGroup != null }.groupBy { it.supersetGroup }
@@ -192,6 +214,7 @@ class TodayViewModel(
         } else {
             _restVisible.value = true
         }
+        victoryArmed = true
     }
 
     fun startRest(seconds: Int) = RestTimer.start(appContext, seconds)

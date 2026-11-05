@@ -1,8 +1,6 @@
 package com.darmix.darmixfit.ui.today
 
-import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -12,10 +10,6 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
-import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -37,7 +31,6 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Undo
-import androidx.compose.material.icons.rounded.Bolt
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Lightbulb
 import androidx.compose.material.icons.rounded.PlayArrow
@@ -52,13 +45,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithCache
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
@@ -97,15 +91,8 @@ import com.darmix.darmixfit.ui.theme.DarmixTheme
 import com.darmix.darmixfit.ui.theme.Motion
 import com.darmix.darmixfit.ui.theme.Spacing
 import com.darmix.darmixfit.ui.timer.RestTimerDialog
-import java.time.LocalDate
-import java.time.format.DateTimeFormatter
-import java.time.format.TextStyle
-import java.time.temporal.IsoFields
-import java.util.Locale
 import kotlinx.coroutines.delay
-
-private val MexicoLocale: Locale = Locale.forLanguageTag("es-MX")
-private val DayMonthFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("d MMM", MexicoLocale)
+import kotlinx.coroutines.launch
 
 private const val LEADING_ITEMS = 3
 private const val UNSET = Int.MIN_VALUE
@@ -145,18 +132,21 @@ fun TodayScreen(
     val timer by viewModel.timerState.collectAsStateWithLifecycle()
     val restDefault by viewModel.restDefaultSeconds.collectAsStateWithLifecycle()
     val restAuto by viewModel.restAuto.collectAsStateWithLifecycle()
-    val allComplete by viewModel.allDayComplete.collectAsStateWithLifecycle()
+    val victoryVisible by viewModel.victoryVisible.collectAsStateWithLifecycle()
     val colors = DarmixTheme.colors
 
     var enlarged by remember { mutableStateOf<ExerciseEntity?>(null) }
-    var dismissed by remember { mutableStateOf(false) }
-    LaunchedEffect(allComplete) {
-        if (!allComplete) dismissed = false
-    }
-
-    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.refreshDate() }
+    val restSeconds = if (restAuto.enabled) restAuto.seconds else restDefault
 
     val listState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
+    val currentState by rememberUpdatedState(state)
+
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        viewModel.refreshDate()
+        if (currentState.allComplete) scope.launch { listState.scrollToItem(0) }
+    }
+
     val lastFocused = remember { mutableIntStateOf(UNSET) }
     LaunchedEffect(state.loading, state.activeIndex) {
         if (state.loading || state.items.isEmpty()) return@LaunchedEffect
@@ -186,7 +176,7 @@ fun TodayScreen(
             contentPadding = PaddingValues(top = Spacing.md, bottom = Spacing.huge)
         ) {
             item(key = "header", contentType = "header") {
-                TodayHeader(date = state.date, planTitle = state.planTitle)
+                TodayTitle(date = state.date, planTitle = state.planTitle)
             }
 
             when {
@@ -201,11 +191,11 @@ fun TodayScreen(
                 }
 
                 else -> {
-                    item(key = "score", contentType = "score") {
-                        Scoreboard(state = state)
+                    item(key = "reactor", contentType = "reactor") {
+                        TodayReactorSection(state = state, restSeconds = restSeconds)
                     }
                     item(key = "section", contentType = "section") {
-                        SectionLabel(blocks = state.totalCount, sets = state.totalSets)
+                        RoutineLabel()
                     }
                     itemsIndexed(
                         items = state.items,
@@ -257,7 +247,7 @@ fun TodayScreen(
         }
 
         AnimatedVisibility(
-            visible = allComplete && !dismissed,
+            visible = victoryVisible,
             enter = fadeIn(Motion.enter()),
             exit = fadeOut(Motion.exit())
         ) {
@@ -265,9 +255,9 @@ fun TodayScreen(
                 planTitle = state.planTitle,
                 totalSets = state.totalSets,
                 totalExercises = state.totalCount,
-                onStay = { dismissed = true },
+                onStay = viewModel::dismissVictory,
                 onSwitchProgram = {
-                    dismissed = true
+                    viewModel.dismissVictory()
                     onSwitchProgram()
                 }
             )
@@ -295,210 +285,6 @@ fun TodayScreen(
                 onDismiss = { enlarged = null }
             )
         }
-    }
-}
-
-@Composable
-private fun TodayHeader(date: LocalDate, planTitle: String?) {
-    val colors = DarmixTheme.colors
-    val dayName = remember(date) {
-        date.dayOfWeek.getDisplayName(TextStyle.FULL, MexicoLocale)
-    }
-    val meta = remember(date) {
-        val dayMonth = date.format(DayMonthFormatter).replace(".", "")
-        "$dayName $dayMonth · Semana ${date.get(IsoFields.WEEK_OF_WEEK_BASED_YEAR)}"
-    }
-
-    Column(
-        modifier = Modifier.padding(horizontal = Spacing.screen, vertical = Spacing.sm),
-        verticalArrangement = Arrangement.spacedBy(Spacing.sm + 2.dp)
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-            Box(
-                Modifier
-                    .size(width = 16.dp, height = 3.dp)
-                    .background(colors.voltText, CircleShape)
-            )
-            Overline(text = meta, color = colors.textSecondary)
-        }
-        Text(
-            text = (planTitle ?: dayName).uppercase(MexicoLocale),
-            style = MaterialTheme.typography.displaySmall,
-            color = colors.textPrimary,
-            maxLines = 3,
-            overflow = TextOverflow.Ellipsis
-        )
-    }
-}
-
-@Composable
-private fun Scoreboard(state: TodayUiState) {
-    val colors = DarmixTheme.colors
-    val accent = voltAccent(colors)
-    val percent = (state.progress * 100).toInt()
-    val units = remember(state.items) {
-        state.items.map { it.totalUnits to it.completedUnits.coerceAtMost(it.totalUnits) }
-    }
-    val message = when {
-        state.completedSets == 0 -> "Primera serie, primer paso. Arranca."
-        state.allComplete -> "Día conquistado. Nada que deber."
-        state.progress >= 0.75f -> "Recta final. No aflojes ahora."
-        state.progress >= 0.5f -> "Pasaste la mitad. Sostén el ritmo."
-        else -> "En marcha. Cada serie cuenta."
-    }
-    val stripe = if (colors.isDark) Color.White.copy(alpha = 0.025f) else Color.Black.copy(alpha = 0.035f)
-
-    Column(
-        modifier = Modifier
-            .padding(horizontal = Spacing.screen, vertical = Spacing.md)
-            .fillMaxWidth()
-            .clip(DarmixShapes.Hero)
-            .background(colors.card)
-            .drawWithCache {
-                val step = 14.dp.toPx()
-                val lines = Path().apply {
-                    var x = -size.height
-                    while (x < size.width) {
-                        moveTo(x, size.height)
-                        lineTo(x + size.height, 0f)
-                        x += step
-                    }
-                }
-                val glowCenter = Offset(size.width, 0f)
-                val glowRadius = size.width * 0.75f
-                val glow = Brush.radialGradient(
-                    listOf(colors.volt.copy(alpha = if (colors.isDark) 0.14f else 0.26f), Color.Transparent),
-                    center = glowCenter,
-                    radius = glowRadius
-                )
-                val stroke = Stroke(1.dp.toPx())
-                onDrawBehind {
-                    drawPath(lines, stripe, style = stroke)
-                    drawCircle(glow, radius = glowRadius, center = glowCenter)
-                }
-            }
-            .border(1.dp, colors.hairline, DarmixShapes.Hero)
-            .padding(Spacing.xl),
-        verticalArrangement = Arrangement.spacedBy(Spacing.lg)
-    ) {
-        Row(verticalAlignment = Alignment.Bottom) {
-            Column(modifier = Modifier.weight(1f)) {
-                Overline(text = "Series del día", color = colors.textTertiary)
-                Spacer(Modifier.height(Spacing.xs))
-                Row(verticalAlignment = Alignment.Bottom) {
-                    AnimatedContent(
-                        targetState = state.completedSets,
-                        transitionSpec = {
-                            val up = targetState > initialState
-                            (slideInVertically { if (up) it else -it } + fadeIn()) togetherWith
-                                    (slideOutVertically { if (up) -it else it } + fadeOut()) using
-                                    SizeTransform(clip = false)
-                        },
-                        label = "sets-counter"
-                    ) { value ->
-                        Text(text = "$value", style = DarmixTextStyles.MetricHero, color = accent.text)
-                    }
-                    Text(
-                        text = "/${state.totalSets}",
-                        style = MaterialTheme.typography.headlineLarge,
-                        color = colors.textTertiary,
-                        modifier = Modifier.padding(start = 4.dp, bottom = 6.dp)
-                    )
-                }
-            }
-            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
-                ScoreStat(value = "$percent%", label = "Completado")
-                ScoreStat(value = "${state.doneCount}/${state.totalCount}", label = "Ejercicios")
-            }
-        }
-
-        DayTicks(
-            units = units,
-            activeIndex = state.activeIndex,
-            fill = accent.fill,
-            track = colors.cardHigh,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(28.dp)
-        )
-
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-            Icon(Icons.Rounded.Bolt, contentDescription = null, tint = accent.text, modifier = Modifier.size(18.dp))
-            Text(text = message, style = MaterialTheme.typography.bodyMedium, color = colors.textSecondary)
-        }
-    }
-}
-
-@Composable
-private fun ScoreStat(value: String, label: String) {
-    val colors = DarmixTheme.colors
-    Column(horizontalAlignment = Alignment.End) {
-        Text(text = value, style = DarmixTextStyles.MetricSmall, color = colors.textPrimary)
-        Overline(text = label, color = colors.textTertiary)
-    }
-}
-
-@Composable
-private fun DayTicks(
-    units: List<Pair<Int, Int>>,
-    activeIndex: Int,
-    fill: Color,
-    track: Color,
-    modifier: Modifier = Modifier
-) {
-    Canvas(modifier = modifier) {
-        val totalTicks = units.sumOf { it.first }
-        if (totalTicks == 0) return@Canvas
-        val groupGap = 9.dp.toPx()
-        val tickGap = 3.dp.toPx()
-        val available = size.width - groupGap * (units.size - 1) - tickGap * (totalTicks - units.size)
-        val tickWidth = (available / totalTicks).coerceAtLeast(1f)
-        val radius = CornerRadius(minOf(tickWidth / 2f, 3.dp.toPx()))
-        var x = 0f
-        units.forEachIndexed { group, (total, done) ->
-            repeat(total) { i ->
-                val filled = i < done
-                val next = group == activeIndex && i == done
-                val h = when {
-                    filled -> size.height
-                    next -> size.height * 0.78f
-                    else -> size.height * 0.5f
-                }
-                drawRoundRect(
-                    color = when {
-                        filled -> fill
-                        next -> fill.copy(alpha = 0.4f)
-                        else -> track
-                    },
-                    topLeft = Offset(x, size.height - h),
-                    size = Size(tickWidth, h),
-                    cornerRadius = radius
-                )
-                x += tickWidth + tickGap
-            }
-            x += groupGap - tickGap
-        }
-    }
-}
-
-@Composable
-private fun SectionLabel(blocks: Int, sets: Int) {
-    val colors = DarmixTheme.colors
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(start = Spacing.screen, end = Spacing.screen, top = Spacing.lg, bottom = Spacing.lg),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(Spacing.md)
-    ) {
-        Text(text = "RUTA DEL DÍA", style = MaterialTheme.typography.headlineSmall, color = colors.textPrimary)
-        Box(
-            Modifier
-                .weight(1f)
-                .height(1.dp)
-                .background(colors.hairline)
-        )
-        Overline(text = "$blocks bloques · $sets series", color = colors.textTertiary)
     }
 }
 

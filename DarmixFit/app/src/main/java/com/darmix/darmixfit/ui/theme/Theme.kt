@@ -12,6 +12,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
@@ -20,11 +21,11 @@ import androidx.core.view.WindowCompat
 private fun DarmixColors.toColorScheme(): ColorScheme {
     val base = if (isDark) darkColorScheme() else lightColorScheme()
     return base.copy(
-        primary = if (isDark) volt else DarmixPalette.VoltDeep,
+        primary = if (isDark) volt else voltDeep,
         onPrimary = if (isDark) onVolt else Color.White,
         primaryContainer = voltSoft,
         onPrimaryContainer = voltText,
-        inversePrimary = if (isDark) DarmixPalette.VoltDeep else volt,
+        inversePrimary = if (isDark) voltDeep else volt,
         secondary = tide,
         onSecondary = onTide,
         secondaryContainer = tideSoft,
@@ -59,9 +60,6 @@ private fun DarmixColors.toColorScheme(): ColorScheme {
     )
 }
 
-private val DarkScheme = DarkDarmixColors.toColorScheme()
-private val LightScheme = LightDarmixColors.toColorScheme()
-
 private val DarmixMaterialShapes = Shapes(
     extraSmall = RoundedCornerShape(8.dp),
     small = RoundedCornerShape(12.dp),
@@ -73,6 +71,7 @@ private val DarmixMaterialShapes = Shapes(
 @Composable
 fun DarmixFitTheme(
     themeMode: ThemeMode = ThemeMode.SYSTEM,
+    accent: AccentPalette = AccentPalette.VOLT,
     content: @Composable () -> Unit
 ) {
     val dark = when (themeMode) {
@@ -80,7 +79,11 @@ fun DarmixFitTheme(
         ThemeMode.LIGHT -> false
         ThemeMode.DARK -> true
     }
-    val darmixColors = if (dark) DarkDarmixColors else LightDarmixColors
+    val darmixColors = remember(dark, accent) {
+        (if (dark) DarkDarmixColors else LightDarmixColors).withAccent(accent)
+    }
+    val colorScheme = remember(darmixColors) { darmixColors.toColorScheme() }
+    val reactorColors = remember(accent) { ReactorColors.of(accent) }
 
     val view = LocalView.current
     if (!view.isInEditMode) {
@@ -93,9 +96,13 @@ fun DarmixFitTheme(
         }
     }
 
-    CompositionLocalProvider(LocalDarmixColors provides darmixColors) {
+    CompositionLocalProvider(
+        LocalDarmixColors provides darmixColors,
+        LocalAccentPalette provides accent,
+        LocalReactorColors provides reactorColors
+    ) {
         MaterialTheme(
-            colorScheme = if (dark) DarkScheme else LightScheme,
+            colorScheme = colorScheme,
             typography = Typography,
             shapes = DarmixMaterialShapes,
             content = content
@@ -107,4 +114,12 @@ object DarmixTheme {
     val colors: DarmixColors
         @Composable @ReadOnlyComposable
         get() = LocalDarmixColors.current
+
+    val reactor: ReactorColors
+        @Composable @ReadOnlyComposable
+        get() = LocalReactorColors.current
+
+    val accent: AccentPalette
+        @Composable @ReadOnlyComposable
+        get() = LocalAccentPalette.current
 }

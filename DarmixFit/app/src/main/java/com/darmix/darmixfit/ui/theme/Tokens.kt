@@ -47,7 +47,9 @@ data class DarmixColors(
     val leaf: Color,
     val leafSoft: Color,
     val leafText: Color,
-    val scrim: Color
+    val scrim: Color,
+    val voltBright: Color = DarmixPalette.VoltBright,
+    val voltDeep: Color = DarmixPalette.VoltDeep
 ) {
     val voltGlow: Brush
         get() = Brush.radialGradient(
@@ -60,7 +62,7 @@ data class DarmixColors(
         )
 
     val voltRamp: Brush
-        get() = Brush.horizontalGradient(listOf(volt, if (isDark) DarmixPalette.VoltBright else DarmixPalette.VoltDeep))
+        get() = Brush.horizontalGradient(listOf(volt, if (isDark) voltBright else voltDeep))
 
     val fireRamp: Brush
         get() = Brush.horizontalGradient(listOf(gold, ember))
