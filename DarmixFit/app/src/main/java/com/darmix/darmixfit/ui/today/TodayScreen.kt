@@ -193,11 +193,7 @@ fun TodayScreen(
                 planTitle = state.planTitle,
                 totalSets = state.totalSets,
                 totalExercises = state.totalCount,
-                onStay = viewModel::dismissVictory,
-                onSwitchProgram = {
-                    viewModel.dismissVictory()
-                    onSwitchProgram()
-                }
+                onStay = viewModel::dismissVictory
             )
         }
     }

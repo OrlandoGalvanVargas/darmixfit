@@ -15,12 +15,6 @@ internal class ReactorDrive private constructor(val phase: ReactorPhase, val cha
         ReactorPhase.FULL -> 1f
     }
 
-    val spin: Float = when (phase) {
-        ReactorPhase.OFF -> 0f
-        ReactorPhase.RUN -> lerp(0.05f, 0.9f, charge * charge * charge)
-        ReactorPhase.FULL -> 1f
-    }
-
     val waves: Float = when (phase) {
         ReactorPhase.OFF -> 0f
         ReactorPhase.RUN -> lerp(0.4f, 1f, charge)
@@ -95,7 +89,6 @@ internal class ReactorMotion {
     private var tickAccumulator = 0f
     private var flickerPhase = 0f
     private var speedNow = Float.NaN
-    private var spinNow = Float.NaN
 
     fun step(dt: Float, drive: ReactorDrive, progress: Float, sensors: LiquidSensors, feedback: ReactorSpinFeedback) {
         clock += dt
@@ -103,9 +96,6 @@ internal class ReactorMotion {
         speedNow += (drive.motion - speedNow) * (1f - exp(-dt * SPEED_RATE))
         if (drive.motion == 0f && speedNow < 0.01f) speedNow = 0f
         val speed = speedNow
-        if (spinNow.isNaN()) spinNow = drive.spin
-        spinNow += (drive.spin - spinNow) * (1f - exp(-dt * SPEED_RATE))
-        if (drive.spin == 0f && spinNow < 0.005f) spinNow = 0f
         if (speed > 0f) {
             flowA = (flowA + dt * speed / FLOW_A_SECONDS) % 1f
             flowB = (flowB + dt * speed / FLOW_B_SECONDS) % 1f
@@ -142,7 +132,6 @@ internal class ReactorMotion {
                 feedback.end()
             }
         }
-        if (!manual && spinNow > 0f) rotate(360f / SPIN_SECONDS * spinNow * dt)
     }
 
     fun beginDrag() {
@@ -208,7 +197,6 @@ internal class ReactorMotion {
         private const val WAVE_FRONT_SECONDS = 2.6f
         private const val WAVE_BACK_SECONDS = 4.4f
         private const val BREATH_SECONDS = 2.4f
-        private const val SPIN_SECONDS = 18f
         private const val FULL_RATE = 4f
         private const val DIM_RATE = 3.5f
         private const val FLING_STOP = 14f

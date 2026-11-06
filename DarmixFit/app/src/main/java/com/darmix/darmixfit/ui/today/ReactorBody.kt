@@ -33,8 +33,6 @@ internal fun buildReactorBody(sizePx: Int, colors: ReactorColors): ReactorBody {
     canvas.scale(unit, unit)
     val paint = Paint(Paint.ANTI_ALIAS_FLAG)
 
-    drawTubeShade(canvas, paint)
-
     val windows = windowsPath()
     val housing = Path().apply {
         fillType = Path.FillType.EVEN_ODD
@@ -88,6 +86,24 @@ internal fun buildReactorBody(sizePx: Int, colors: ReactorColors): ReactorBody {
     paint.strokeWidth = 0.9f
     paint.color = colors.bevelHighlight.argb(0.35f)
     canvas.drawPath(housing, paint)
+    paint.strokeWidth = ReactorGeometry.HOUSING_SHADE_WIDTH
+    paint.color = android.graphics.Color.BLACK
+    paint.shader = RadialGradient(
+        CENTER,
+        CENTER,
+        ReactorGeometry.HOUSING_SHADE_REACH,
+        intArrayOf(
+            Color.Black.argb(1f),
+            Color.Black.argb(1f),
+            Color.Black.argb(0.88f),
+            Color.Black.argb(0.4f),
+            Color.Black.argb(0f)
+        ),
+        floatArrayOf(0f, 0.85f, 0.9f, 0.96f, 1f),
+        Shader.TileMode.CLAMP
+    )
+    canvas.drawCircle(CENTER, CENTER, ReactorGeometry.HOUSING_SHADE, paint)
+    paint.shader = null
     canvas.restore()
 
     paint.strokeWidth = 1.6f
@@ -117,28 +133,6 @@ internal fun buildReactorBody(sizePx: Int, colors: ReactorColors): ReactorBody {
     paint.shader = null
 
     return ReactorBody(bitmap.asImageBitmap(), pad.toFloat())
-}
-
-private fun drawTubeShade(canvas: Canvas, paint: Paint) {
-    paint.style = Paint.Style.STROKE
-    paint.strokeWidth = ReactorGeometry.TUBE_WIDTH
-    paint.shader = RadialGradient(
-        CENTER,
-        CENTER,
-        ReactorGeometry.TUBE + ReactorGeometry.TUBE_WIDTH / 2f,
-        intArrayOf(
-            Color.Black.argb(0.7f),
-            Color.Black.argb(0.1f),
-            Color.White.argb(0.32f),
-            Color.White.argb(0.04f),
-            Color.Black.argb(0.2f),
-            Color.Black.argb(0.75f)
-        ),
-        floatArrayOf(0.79f, 0.83f, 0.86f, 0.88f, 0.96f, 1f),
-        Shader.TileMode.CLAMP
-    )
-    canvas.drawCircle(CENTER, CENTER, ReactorGeometry.TUBE, paint)
-    paint.shader = null
 }
 
 private fun windowsPath(): Path {
