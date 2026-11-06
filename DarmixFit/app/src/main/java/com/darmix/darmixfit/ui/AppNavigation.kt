@@ -38,7 +38,6 @@ import androidx.compose.foundation.shape.CutCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.CalendarViewWeek
-import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.EditNote
 import androidx.compose.material.icons.rounded.FitnessCenter
 import androidx.compose.material.icons.rounded.Insights
@@ -56,6 +55,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -75,8 +75,6 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.PathParser
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -98,10 +96,10 @@ import com.darmix.darmixfit.ui.edit.EditRoutineScreen
 import com.darmix.darmixfit.ui.history.HistoryScreen
 import com.darmix.darmixfit.ui.programs.ProgramsScreen
 import com.darmix.darmixfit.ui.programs.ProgramsViewModel
+import com.darmix.darmixfit.ui.settings.SettingsOverlay
 import com.darmix.darmixfit.ui.theme.DarmixColors
 import com.darmix.darmixfit.ui.theme.DarmixTheme
 import com.darmix.darmixfit.ui.theme.DisplayFamily
-import com.darmix.darmixfit.ui.theme.LocalThemeToggle
 import com.darmix.darmixfit.ui.theme.Motion
 import com.darmix.darmixfit.ui.theme.ReactorColors
 import com.darmix.darmixfit.ui.theme.Spacing
@@ -219,85 +217,88 @@ fun DarmixNavHost() {
     val navController = rememberNavController()
     val programsViewModel: ProgramsViewModel = viewModel(factory = ProgramsViewModel.Factory)
     val programs by programsViewModel.programs.collectAsStateWithLifecycle()
-    val toggleTheme = LocalThemeToggle.current
+    var settingsOpen by rememberSaveable { mutableStateOf(false) }
 
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
     val onProgramsScreen = currentRoute == PROGRAMS_ROUTE
     val colors = DarmixTheme.colors
 
-    Scaffold(
-        modifier = Modifier.fillMaxSize(),
-        containerColor = colors.canvas,
-        topBar = {
-            if (onProgramsScreen) {
-                SectionTopBar(
-                    overline = "Administrar",
-                    title = "PROGRAMAS",
-                    onBack = { navController.popBackStack() }
-                )
-            } else {
-                ProgramHeader(
-                    programs = programs,
-                    onSelect = programsViewModel::activate,
-                    onManage = { navController.navigate(PROGRAMS_ROUTE) },
-                    onOpenSettings = { toggleTheme() }
-                )
-            }
-        },
-        bottomBar = {
-            if (!onProgramsScreen) {
-                DockBar(
-                    selectedIndex = Destination.indexOf(currentRoute),
-                    onNavigate = { destination ->
-                        navController.navigate(destination.route) {
-                            popUpTo(navController.graph.findStartDestination().id) {
-                                saveState = true
-                            }
-                            launchSingleTop = true
-                            restoreState = true
-                        }
-                    }
-                )
-            }
-        }
-    ) { innerPadding ->
-        NavHost(
-            navController = navController,
-            startDestination = Destination.Today.route,
-            modifier = Modifier.padding(innerPadding),
-            enterTransition = { tabEnter() },
-            exitTransition = { tabExit() },
-            popEnterTransition = { tabEnter() },
-            popExitTransition = { tabExit() }
-        ) {
-            composable(Destination.Today.route) { TodayScreen() }
-            composable(Destination.Week.route) { WeekScreen() }
-            composable(Destination.History.route) { HistoryScreen() }
-            composable(Destination.Edit.route) { EditRoutineScreen() }
-
-            composable(
-                route = PROGRAMS_ROUTE,
-                enterTransition = {
-                    slideInHorizontally(tween(Motion.Slow, easing = Motion.Emphasized)) { it } +
-                            fadeIn(tween(Motion.Standard))
-                },
-                exitTransition = {
-                    slideOutHorizontally(tween(Motion.Slow, easing = Motion.Emphasized)) { -it / 5 } +
-                            fadeOut(tween(Motion.Standard))
-                },
-                popEnterTransition = {
-                    slideInHorizontally(tween(Motion.Slow, easing = Motion.Emphasized)) { -it / 5 } +
-                            fadeIn(tween(Motion.Standard))
-                },
-                popExitTransition = {
-                    slideOutHorizontally(tween(Motion.Slow, easing = Motion.Emphasized)) { it } +
-                            fadeOut(tween(Motion.Standard))
+    Box(modifier = Modifier.fillMaxSize()) {
+        Scaffold(
+            modifier = Modifier.fillMaxSize(),
+            containerColor = colors.canvas,
+            topBar = {
+                if (onProgramsScreen) {
+                    SectionTopBar(
+                        overline = "Administrar",
+                        title = "PROGRAMAS",
+                        onBack = { navController.popBackStack() }
+                    )
+                } else {
+                    ProgramHeader(
+                        programs = programs,
+                        onSelect = programsViewModel::activate,
+                        onManage = { navController.navigate(PROGRAMS_ROUTE) },
+                        onOpenSettings = { settingsOpen = true }
+                    )
                 }
+            },
+            bottomBar = {
+                if (!onProgramsScreen) {
+                    DockBar(
+                        selectedIndex = Destination.indexOf(currentRoute),
+                        onNavigate = { destination ->
+                            navController.navigate(destination.route) {
+                                popUpTo(navController.graph.findStartDestination().id) {
+                                    saveState = true
+                                }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        }
+                    )
+                }
+            }
+        ) { innerPadding ->
+            NavHost(
+                navController = navController,
+                startDestination = Destination.Today.route,
+                modifier = Modifier.padding(innerPadding),
+                enterTransition = { tabEnter() },
+                exitTransition = { tabExit() },
+                popEnterTransition = { tabEnter() },
+                popExitTransition = { tabExit() }
             ) {
-                ProgramsScreen(viewModel = programsViewModel)
+                composable(Destination.Today.route) { TodayScreen() }
+                composable(Destination.Week.route) { WeekScreen() }
+                composable(Destination.History.route) { HistoryScreen() }
+                composable(Destination.Edit.route) { EditRoutineScreen() }
+
+                composable(
+                    route = PROGRAMS_ROUTE,
+                    enterTransition = {
+                        slideInHorizontally(tween(Motion.Slow, easing = Motion.Emphasized)) { it } +
+                                fadeIn(tween(Motion.Standard))
+                    },
+                    exitTransition = {
+                        slideOutHorizontally(tween(Motion.Slow, easing = Motion.Emphasized)) { -it / 5 } +
+                                fadeOut(tween(Motion.Standard))
+                    },
+                    popEnterTransition = {
+                        slideInHorizontally(tween(Motion.Slow, easing = Motion.Emphasized)) { -it / 5 } +
+                                fadeIn(tween(Motion.Standard))
+                    },
+                    popExitTransition = {
+                        slideOutHorizontally(tween(Motion.Slow, easing = Motion.Emphasized)) { it } +
+                                fadeOut(tween(Motion.Standard))
+                    }
+                ) {
+                    ProgramsScreen(viewModel = programsViewModel)
+                }
             }
         }
+        SettingsOverlay(visible = settingsOpen, onDismiss = { settingsOpen = false })
     }
 }
 
@@ -473,11 +474,6 @@ private fun ProgramSelector(
                                 .background(if (program.isActive) colors.voltText else colors.hairlineStrong)
                         )
                     },
-                    trailingIcon = {
-                        if (program.isActive) {
-                            Icon(Icons.Rounded.Check, contentDescription = "Activo", tint = colors.voltText)
-                        }
-                    },
                     onClick = {
                         expanded = false
                         if (!program.isActive) onSelect(program.id)
@@ -601,7 +597,6 @@ private fun DockBar(
     onNavigate: (Destination) -> Unit
 ) {
     val colors = DarmixTheme.colors
-    val haptic = LocalHapticFeedback.current
     val barTop = if (colors.isDark) colors.card else colors.cardRaised
     val barBottom = if (colors.isDark) colors.canvasDeep else colors.card
     val shadow = if (colors.isDark) 0.45f else 0.07f
@@ -649,10 +644,7 @@ private fun DockBar(
                         destination = destination,
                         selected = index == selectedIndex,
                         onClick = {
-                            if (index != selectedIndex) {
-                                haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                                onNavigate(destination)
-                            }
+                            if (index != selectedIndex) onNavigate(destination)
                         },
                         modifier = Modifier
                             .weight(1f)

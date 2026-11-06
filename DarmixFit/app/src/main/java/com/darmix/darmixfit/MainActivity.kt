@@ -22,8 +22,13 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.darmix.darmixfit.service.SessionNotifier
 import com.darmix.darmixfit.ui.DarmixNavHost
 import com.darmix.darmixfit.ui.permissions.SetupGate
+import com.darmix.darmixfit.ui.settings.HapticPreference
+import com.darmix.darmixfit.ui.settings.LocalHapticsEnabled
+import com.darmix.darmixfit.ui.settings.LocalSettingsActions
+import com.darmix.darmixfit.ui.settings.SettingsActions
 import com.darmix.darmixfit.ui.splash.SPLASH_DURATION_MILLIS
 import com.darmix.darmixfit.ui.splash.SplashOverlay
+import com.darmix.darmixfit.ui.theme.AccentPreference
 import com.darmix.darmixfit.ui.theme.DarmixFitTheme
 import com.darmix.darmixfit.ui.theme.DarmixTheme
 import com.darmix.darmixfit.ui.theme.LocalThemeMode
@@ -44,8 +49,17 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         val themePreference = ThemePreference(this)
+        val accentPreference = AccentPreference(this)
+        val hapticPreference = HapticPreference(this)
+        val settingsActions = SettingsActions(
+            setDark = { dark -> themePreference.setMode(if (dark) ThemeMode.DARK else ThemeMode.LIGHT) },
+            setAccent = accentPreference::set,
+            setHaptics = hapticPreference::set
+        )
         setContent {
             val themeMode by themePreference.mode.collectAsStateWithLifecycle()
+            val accent by accentPreference.palette.collectAsStateWithLifecycle()
+            val hapticsEnabled by hapticPreference.enabled.collectAsStateWithLifecycle()
             val systemDark = isSystemInDarkTheme()
             val effectiveDark = when (themeMode) {
                 ThemeMode.SYSTEM -> systemDark
@@ -54,10 +68,12 @@ class MainActivity : ComponentActivity() {
             }
             val toggleTheme: () -> Unit = remember(effectiveDark) { { themePreference.toggle(effectiveDark) } }
 
-            DarmixFitTheme(themeMode = themeMode) {
+            DarmixFitTheme(themeMode = themeMode, accent = accent) {
                 CompositionLocalProvider(
                     LocalThemeToggle provides toggleTheme,
-                    LocalThemeMode provides themeMode
+                    LocalThemeMode provides themeMode,
+                    LocalSettingsActions provides settingsActions,
+                    LocalHapticsEnabled provides hapticsEnabled
                 ) {
                     var showSplash by rememberSaveable { mutableStateOf(savedInstanceState == null) }
 

@@ -9,8 +9,10 @@ import android.view.HapticFeedbackConstants
 import android.view.View
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalView
+import com.darmix.darmixfit.ui.settings.LocalHapticsEnabled
 import java.util.Random
 import java.util.concurrent.ConcurrentLinkedQueue
 import kotlin.math.PI
@@ -25,7 +27,9 @@ import kotlin.math.tanh
 @Composable
 internal fun rememberSpinFeedback(): ReactorSpinFeedback {
     val view = LocalView.current
+    val hapticsEnabled = LocalHapticsEnabled.current
     val feedback = remember(view) { ReactorSpinFeedback(view) }
+    SideEffect { feedback.hapticsEnabled = hapticsEnabled }
     DisposableEffect(feedback) {
         onDispose { feedback.release() }
     }
@@ -51,13 +55,16 @@ internal class ReactorSpinFeedback(private val view: View) {
     @Volatile
     private var worker: Thread? = null
 
+    @Volatile
+    var hapticsEnabled = true
+
     private var lastHaptic = 0L
     private var variant = 0
 
     fun click(intensity: Float) {
         if (released) return
         val now = SystemClock.uptimeMillis()
-        if (now - lastHaptic >= HAPTIC_GAP_MS) {
+        if (hapticsEnabled && now - lastHaptic >= HAPTIC_GAP_MS) {
             view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
             lastHaptic = now
         }
