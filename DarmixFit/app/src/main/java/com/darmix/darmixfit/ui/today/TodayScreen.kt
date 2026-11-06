@@ -73,8 +73,7 @@ private const val UNSET = Int.MIN_VALUE
 @Composable
 fun TodayScreen(
     modifier: Modifier = Modifier,
-    viewModel: TodayViewModel = viewModel(factory = TodayViewModel.Factory),
-    onSwitchProgram: () -> Unit = {}
+    viewModel: TodayViewModel = viewModel(factory = TodayViewModel.Factory)
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val restVisible by viewModel.restVisible.collectAsStateWithLifecycle()
