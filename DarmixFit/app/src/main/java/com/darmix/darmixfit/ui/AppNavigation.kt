@@ -90,7 +90,6 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.darmix.darmixfit.data.ProgramEntity
-import com.darmix.darmixfit.ui.components.DarmixIconButton
 import com.darmix.darmixfit.ui.components.Overline
 import com.darmix.darmixfit.ui.edit.EditRoutineScreen
 import com.darmix.darmixfit.ui.history.HistoryScreen
@@ -114,6 +113,7 @@ private val MedallionSize = 50.dp
 private val MedallionLift = (-10).dp
 private val SelectorShape = CutCornerShape(topStart = 10.dp, bottomEnd = 10.dp)
 private val MenuShape = CutCornerShape(topStart = 12.dp, bottomEnd = 12.dp)
+private val BackShape = CutCornerShape(10.dp)
 
 private const val GEAR_PATH =
     "M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"
@@ -318,13 +318,17 @@ private fun SectionTopBar(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.md)
     ) {
-        DarmixIconButton(
-            icon = Icons.AutoMirrored.Rounded.ArrowBack,
-            contentDescription = "Volver",
-            onClick = onBack,
-            size = 44.dp,
-            shape = CircleShape
-        )
+        Box(
+            modifier = Modifier
+                .size(44.dp)
+                .clip(BackShape)
+                .background(colors.canvasDeep)
+                .border(1.dp, colors.hairlineStrong, BackShape)
+                .clickable(role = Role.Button, onClickLabel = "Volver", onClick = onBack),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Volver", tint = colors.textPrimary, modifier = Modifier.size(20.dp))
+        }
         Column {
             Overline(text = overline, color = colors.voltText)
             Text(text = title, style = MaterialTheme.typography.headlineMedium, color = colors.textPrimary)
