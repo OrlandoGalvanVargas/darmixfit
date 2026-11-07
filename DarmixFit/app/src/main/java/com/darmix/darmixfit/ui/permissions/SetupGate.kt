@@ -59,7 +59,8 @@ fun SetupGate(content: @Composable () -> Unit) {
                 status = status,
                 onNotifications = {
                     val permission = Manifest.permission.POST_NOTIFICATIONS
-                    val canAsk = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && (
+                    val canAsk = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                            !status.notificationPermissionGranted && (
                             !SetupChecker.notificationsAsked(context) ||
                                     (activity != null && ActivityCompat.shouldShowRequestPermissionRationale(activity, permission))
                             )
@@ -73,9 +74,12 @@ fun SetupGate(content: @Composable () -> Unit) {
                 onExactAlarms = { SettingsIntents.requestExactAlarms(context) },
                 onBattery = { SettingsIntents.requestIgnoreBatteryOptimizations(context) },
                 autostartFallback = autostartFallback,
-                onOpenAutostart = { autostartFallback = !SettingsIntents.openXiaomiAutostart(context) },
-                onConfirmXiaomi = {
-                    SetupChecker.confirmXiaomi(context)
+                onOpenAutostart = {
+                    val vendor = status.vendor
+                    if (vendor != null) autostartFallback = !SettingsIntents.openVendorSettings(context, vendor)
+                },
+                onConfirmVendor = {
+                    SetupChecker.confirmVendor(context)
                     status = SetupChecker.check(context)
                 },
                 onSkip = { skipped = true }
