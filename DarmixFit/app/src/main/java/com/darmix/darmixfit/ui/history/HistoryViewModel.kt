@@ -21,24 +21,18 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
-import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.YearMonth
-import java.time.temporal.TemporalAdjusters
 
 enum class DayStatus { COMPLETE, PARTIAL }
-
-private const val RECENT_WEEKS = 8
 
 @Immutable
 data class HistoryStats(
     val monthComplete: Int = 0,
-    val monthPartial: Int = 0,
     val monthSets: Int = 0,
-    val weekComplete: Int = 0,
-    val weeklyStreak: Int = 0,
-    val recentWeeks: List<Boolean> = List(RECENT_WEEKS) { false }
+    val compliance: Int? = null
 )
 
 @Immutable
@@ -73,13 +67,17 @@ class HistoryViewModel(repo: RoutineRepository) : ViewModel() {
         }
     }
 
+    private val trainingDays = repo.observeAllExercises()
+        .map { exercises -> exercises.map { it.dayOfWeek }.toSet() }
+        .distinctUntilChanged()
+
     val uiState: StateFlow<HistoryUiState> = combine(
         month,
         selected,
         monthLogs,
         dayDetail,
-        repo.observeCompleteDates()
-    ) { m, sel, logs, detail, completeDates ->
+        trainingDays
+    ) { m, sel, logs, detail, training ->
         val today = LocalDate.now()
         val byDate = logs.groupBy { LocalDate.parse(it.date) }
 
@@ -89,10 +87,9 @@ class HistoryViewModel(repo: RoutineRepository) : ViewModel() {
         val ratios = byDate.mapValues { (_, list) ->
             list.maxOf { if (it.plannedSets <= 0) 0f else it.doneSets.toFloat() / it.plannedSets }.coerceIn(0f, 1f)
         }
-
-        val weekStart = monday(today)
-        val weekEnd = weekStart.plusDays(6)
-        val completeWeeks = completeDates.map(::monday).toSet()
+        val monthComplete = statuses.count { it.value == DayStatus.COMPLETE }
+        val lastDay = if (YearMonth.from(today) == m) today.dayOfMonth else if (m < YearMonth.from(today)) m.lengthOfMonth() else 0
+        val plannedDays = (1..lastDay).count { day -> m.atDay(day).dayOfWeek.value in training }
 
         HistoryUiState(
             month = m,
@@ -103,14 +100,9 @@ class HistoryViewModel(repo: RoutineRepository) : ViewModel() {
             dayLogs = detail.first,
             dayExercises = detail.second,
             stats = HistoryStats(
-                monthComplete = statuses.count { it.value == DayStatus.COMPLETE },
-                monthPartial = statuses.count { it.value == DayStatus.PARTIAL },
+                monthComplete = monthComplete,
                 monthSets = logs.sumOf { it.doneSets },
-                weekComplete = completeDates.count { !it.isBefore(weekStart) && !it.isAfter(weekEnd) },
-                weeklyStreak = weeklyStreak(completeWeeks, weekStart),
-                recentWeeks = List(RECENT_WEEKS) { i ->
-                    weekStart.minusWeeks((RECENT_WEEKS - 1 - i).toLong()) in completeWeeks
-                }
+                compliance = if (plannedDays > 0) (monthComplete * 100 / plannedDays).coerceAtMost(100) else null
             )
         )
     }
@@ -141,20 +133,6 @@ class HistoryViewModel(repo: RoutineRepository) : ViewModel() {
     fun goToToday() {
         month.value = YearMonth.now()
         selected.value = LocalDate.now()
-    }
-
-    private fun monday(date: LocalDate): LocalDate =
-        date.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
-
-    private fun weeklyStreak(weeks: Set<LocalDate>, currentWeek: LocalDate): Int {
-        var cursor = currentWeek
-        if (cursor !in weeks) cursor = cursor.minusWeeks(1)
-        var streak = 0
-        while (cursor in weeks) {
-            streak++
-            cursor = cursor.minusWeeks(1)
-        }
-        return streak
     }
 
     companion object {
