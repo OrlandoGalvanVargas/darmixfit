@@ -12,10 +12,11 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -29,10 +30,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CutCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Bolt
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.Repeat
@@ -56,18 +55,33 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Matrix
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.PathOperation
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawOutline
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -75,31 +89,68 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.darmix.darmixfit.data.ExerciseEntity
 import com.darmix.darmixfit.ui.components.ExerciseImage
 import com.darmix.darmixfit.ui.components.FullscreenImageDialog
-import com.darmix.darmixfit.ui.components.Overline
 import com.darmix.darmixfit.ui.components.SkeletonBlock
-import com.darmix.darmixfit.ui.components.StatusTag
-import com.darmix.darmixfit.ui.theme.DarmixShapes
-import com.darmix.darmixfit.ui.theme.DarmixTextStyles
+import com.darmix.darmixfit.ui.theme.DarmixColors
 import com.darmix.darmixfit.ui.theme.DarmixTheme
+import com.darmix.darmixfit.ui.theme.DisplayFamily
 import com.darmix.darmixfit.ui.theme.Motion
 import com.darmix.darmixfit.ui.theme.Spacing
 import kotlinx.coroutines.launch
 import java.time.LocalDate
-import java.time.format.DateTimeFormatter
-import java.time.format.TextStyle
-import java.time.temporal.IsoFields
+import java.time.format.TextStyle as DateTextStyle
 import java.util.Locale
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.hypot
+import kotlin.math.sin
 
 private val MexicoLocale: Locale = Locale.forLanguageTag("es-MX")
-private val MonthFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("MMM", MexicoLocale)
 private val DayLetters = listOf("L", "M", "X", "J", "V", "S", "D")
 private const val FIRST_DAY_INDEX = 3
-private val BadgeShape = RoundedCornerShape(16.dp)
+private const val SEGMENT_GAP = 4f
+private const val SEGMENT_SPAN = 360f / 7f
+
+private val CardShape = CutCornerShape(14.dp)
+private val TagShape = CutCornerShape(topEnd = 7.dp, bottomStart = 7.dp)
+private val ThumbShape = CutCornerShape(6.dp)
+private val ImageShape = CutCornerShape(8.dp)
+private val SupersetShape = CutCornerShape(12.dp)
+private val PillShape = CutCornerShape(10.dp)
+
+private val GaugeSize = 260.dp
+private val RingRadius = 84.5.dp
+private val RingWidth = 13.dp
+private val DiscRadius = 116.dp
+private val TickInner = 68.dp
+private val TickOuter = 71.5.dp
+private val TickMajor = 74.dp
+private val LabelRadius = 105.6.dp
+private val GaugeLift = 28.dp
+private val GaugeTrim = 14.dp
 
 private val IntSetSaver = listSaver<MutableState<Set<Int>>, Int>(
     save = { it.value.toList() },
     restore = { mutableStateOf(it.toSet()) }
 )
+
+private enum class DayState { TODAY, COMPLETE, PARTIAL, MISSED, UPCOMING, REST }
+
+private fun WeekDay.state(today: LocalDate): DayState = when {
+    isRest -> DayState.REST
+    date == today -> DayState.TODAY
+    isComplete -> DayState.COMPLETE
+    date.isBefore(today) && (doneSets ?: 0) > 0 -> DayState.PARTIAL
+    date.isBefore(today) -> DayState.MISSED
+    else -> DayState.UPCOMING
+}
+
+private fun stateColor(state: DayState, colors: DarmixColors): Color = when (state) {
+    DayState.TODAY -> colors.voltText
+    DayState.COMPLETE -> colors.leafText
+    DayState.PARTIAL -> colors.voltText.copy(alpha = 0.6f)
+    DayState.REST -> colors.tideText
+    DayState.MISSED, DayState.UPCOMING -> colors.hairlineStrong
+}
 
 @Composable
 fun WeekScreen(
@@ -146,15 +197,20 @@ fun WeekScreen(
             top = Spacing.md,
             bottom = Spacing.huge
         ),
-        verticalArrangement = Arrangement.spacedBy(Spacing.md)
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         item(key = "header", contentType = "header") {
-            WeekHeader(weekStart = state.weekStart)
+            Text(
+                text = "TU SEMANA",
+                style = MaterialTheme.typography.displaySmall,
+                color = colors.textPrimary,
+                modifier = Modifier.padding(top = Spacing.sm)
+            )
         }
 
         if (state.loading) {
             items(count = 4, key = { "skeleton-$it" }, contentType = { "skeleton" }) { index ->
-                SkeletonBlock(height = if (index == 0) 280.dp else 96.dp)
+                SkeletonBlock(height = if (index == 0) 320.dp else 96.dp)
             }
         } else {
             item(key = "board", contentType = "board") {
@@ -169,7 +225,7 @@ fun WeekScreen(
                 contentType = { if (it.isRest) "rest" else "day" }
             ) { day ->
                 if (day.isRest) {
-                    RestDayRow(
+                    RestDayCard(
                         day = day,
                         isToday = day.dayOfWeek == todayDow,
                         modifier = Modifier.animateItem()
@@ -199,229 +255,225 @@ fun WeekScreen(
 }
 
 @Composable
-private fun WeekHeader(weekStart: LocalDate) {
-    val colors = DarmixTheme.colors
-    val meta = remember(weekStart) {
-        "Semana ${weekStart.get(IsoFields.WEEK_OF_WEEK_BASED_YEAR)} · ${formatRange(weekStart)}"
-    }
-    Column(
-        modifier = Modifier.padding(top = Spacing.sm, bottom = Spacing.xs),
-        verticalArrangement = Arrangement.spacedBy(Spacing.sm + 2.dp)
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-            Box(
-                Modifier
-                    .size(width = 16.dp, height = 3.dp)
-                    .background(colors.voltText, CircleShape)
-            )
-            Overline(text = meta, color = colors.textSecondary)
-        }
-        Text(text = "TU SEMANA", style = MaterialTheme.typography.displaySmall, color = colors.textPrimary)
-    }
-}
-
-@Composable
 private fun WeekBoard(state: WeekUiState, onDayClick: (Int) -> Unit) {
     val colors = DarmixTheme.colors
-    val accent = colors.voltText
     val message = when {
         state.trainingDays == 0 -> "Semana libre. Recarga energía."
         state.completedDays >= state.trainingDays -> "Semana completa. Nivel leyenda."
         state.completedDays == 0 -> "Cada gran semana empieza con una serie."
-        else -> "Llevas ${state.completedDays} de ${state.trainingDays} días completos."
+        else -> null
     }
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(DarmixShapes.Hero)
-            .background(colors.card)
-            .drawWithCache {
-                val glowCenter = Offset(0f, 0f)
-                val glowRadius = size.width * 0.7f
-                val glow = Brush.radialGradient(
-                    listOf(colors.volt.copy(alpha = if (colors.isDark) 0.12f else 0.22f), Color.Transparent),
-                    center = glowCenter,
-                    radius = glowRadius
-                )
-                onDrawBehind { drawCircle(glow, radius = glowRadius, center = glowCenter) }
-            }
-            .border(1.dp, colors.hairline, DarmixShapes.Hero)
-            .padding(Spacing.xl),
-        verticalArrangement = Arrangement.spacedBy(Spacing.lg)
+            .padding(top = Spacing.md),
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Row(verticalAlignment = Alignment.Bottom) {
-            Column(modifier = Modifier.weight(1f)) {
-                Overline(text = "Series de la semana", color = colors.textTertiary)
-                Spacer(Modifier.height(Spacing.xs))
-                Row(verticalAlignment = Alignment.Bottom) {
-                    Text(text = "${state.doneSets}", style = DarmixTextStyles.MetricLarge, color = accent)
-                    Text(
-                        text = "/${state.plannedSets}",
-                        style = MaterialTheme.typography.headlineMedium,
-                        color = colors.textTertiary,
-                        modifier = Modifier.padding(start = 4.dp, bottom = 4.dp)
-                    )
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+            BoardStat(value = "${state.trainingDays}", label = "ENTRENO", color = colors.textPrimary, alignEnd = false)
+            Spacer(Modifier.weight(1f))
+            BoardStat(value = "${state.restDays}", label = "DESCANSO", color = colors.tideText, alignEnd = true)
+        }
+        WeekGauge(
+            days = state.days,
+            today = state.today,
+            doneSets = state.doneSets,
+            plannedSets = state.plannedSets,
+            onDayClick = onDayClick,
+            modifier = Modifier.layout { measurable, constraints ->
+                val placeable = measurable.measure(constraints)
+                val lift = GaugeLift.roundToPx()
+                val trim = lift + GaugeTrim.roundToPx()
+                layout(placeable.width, placeable.height - trim) {
+                    placeable.place(0, -lift)
                 }
             }
-            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
-                BoardStat(value = "${state.trainingDays}", label = "Días de entreno", color = colors.textPrimary)
-                BoardStat(value = "${state.restDays}", label = "Descanso", color = colors.tideText)
+        )
+        Spacer(Modifier.height(8.dp))
+        Box(
+            modifier = Modifier
+                .clip(PillShape)
+                .background(colors.card)
+                .border(1.dp, colors.voltText.copy(alpha = 0.4f), PillShape)
+                .padding(horizontal = 16.dp, vertical = 8.dp)
+        ) {
+            if (message != null) {
+                Text(
+                    text = message,
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold, fontSize = 12.5.sp),
+                    color = colors.textSecondary
+                )
+            } else {
+                Text(
+                    text = buildAnnotatedString {
+                        append("Llevas ")
+                        withStyle(SpanStyle(color = colors.voltText, fontWeight = FontWeight.ExtraBold)) {
+                            append("${state.completedDays} de ${state.trainingDays}")
+                        }
+                        append(" días completos")
+                    },
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold, fontSize = 12.5.sp),
+                    color = colors.textSecondary
+                )
             }
         }
-
-        WeekChart(days = state.days, todayDow = state.today.dayOfWeek.value, onDayClick = onDayClick)
-
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-            Icon(Icons.Rounded.Bolt, contentDescription = null, tint = accent, modifier = Modifier.size(18.dp))
-            Text(text = message, style = MaterialTheme.typography.bodyMedium, color = colors.textSecondary)
-        }
     }
 }
 
 @Composable
-private fun BoardStat(value: String, label: String, color: Color) {
-    Column(horizontalAlignment = Alignment.End) {
-        Text(text = value, style = DarmixTextStyles.MetricSmall, color = color)
-        Overline(text = label, color = DarmixTheme.colors.textTertiary)
+private fun BoardStat(value: String, label: String, color: Color, alignEnd: Boolean) {
+    Column(horizontalAlignment = if (alignEnd) Alignment.End else Alignment.Start) {
+        Text(
+            text = value,
+            style = TextStyle(fontFamily = DisplayFamily, fontWeight = FontWeight.Black, fontSize = 34.sp, lineHeight = 34.sp),
+            color = color
+        )
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.5.sp, letterSpacing = 1.6.sp),
+            color = DarmixTheme.colors.textTertiary
+        )
     }
 }
 
 @Composable
-private fun WeekChart(days: List<WeekDay>, todayDow: Int, onDayClick: (Int) -> Unit) {
+private fun WeekGauge(
+    days: List<WeekDay>,
+    today: LocalDate,
+    doneSets: Int,
+    plannedSets: Int,
+    onDayClick: (Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
     val colors = DarmixTheme.colors
-    val accent = colors.voltText
-    val primary = MaterialTheme.colorScheme.primary
-    val onPrimary = MaterialTheme.colorScheme.onPrimary
+    val measurer = rememberTextMeasurer()
     val byDow = remember(days) { days.associateBy { it.dayOfWeek } }
-    val maxSets = remember(days) { (days.maxOfOrNull { it.totalSets } ?: 1).coerceAtLeast(1) }
     val grow = remember { Animatable(0f) }
     LaunchedEffect(Unit) { grow.animateTo(1f, tween(900, easing = Motion.Decelerate)) }
+    val todayDow = today.dayOfWeek.value
+    val labelStyle = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp, letterSpacing = 0.sp)
+    val track = if (colors.isDark) lerp(colors.card, colors.hairline, 0.6f) else colors.hairline
+    val tickDim = colors.hairlineStrong
+    val pastel = lerp(colors.volt, Color.White, if (colors.isDark) 0.5f else 0.35f)
+    val todayComplete = byDow[todayDow]?.isComplete == true
+    val todayArc = if (todayComplete) colors.volt else pastel
+    val todayTicks = when {
+        !colors.isDark -> colors.voltText
+        todayComplete -> pastel
+        else -> colors.volt
+    }
+    val todayHalo = colors.isDark
+    val disc = if (colors.isDark) {
+        Brush.radialGradient(listOf(lerp(colors.card, colors.volt, 0.06f), colors.canvasDeep))
+    } else {
+        Brush.radialGradient(listOf(Color.White, colors.card))
+    }
 
     Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(168.dp)
-            .drawWithCache {
-                val columnWidth = size.width / 7f
-                val barWidth = minOf(columnWidth * 0.46f, 22.dp.toPx())
-                val chartTop = 8.dp.toPx()
-                val chartBottom = size.height - 54.dp.toPx()
-                val chartHeight = chartBottom - chartTop
-                val minBar = 10.dp.toPx()
-                val barRadius = CornerRadius(barWidth / 2f)
-                val highlightRadius = CornerRadius(16.dp.toPx())
-                val inset = 3.dp.toPx()
-                val outline = Stroke(1.5.dp.toPx())
-                val baseline = 1.dp.toPx()
-                onDrawBehind {
-                    val g = grow.value
-                    drawRect(
-                        color = colors.hairline,
-                        topLeft = Offset(0f, chartBottom + 4.dp.toPx()),
-                        size = Size(size.width, baseline)
-                    )
-                    for (dow in 1..7) {
-                        val left = columnWidth * (dow - 1)
-                        val cx = left + columnWidth / 2f
-                        val isToday = dow == todayDow
-                        if (isToday) {
-                            drawRoundRect(
-                                color = accent.copy(alpha = if (colors.isDark) 0.08f else 0.10f),
-                                topLeft = Offset(left + inset, 0f),
-                                size = Size(columnWidth - inset * 2, size.height),
-                                cornerRadius = highlightRadius
-                            )
-                        }
-                        val day = byDow[dow]
-                        if (day == null || day.isRest) {
-                            drawCircle(
-                                color = colors.tide.copy(alpha = 0.55f),
-                                radius = 3.dp.toPx(),
-                                center = Offset(cx, chartBottom - 5.dp.toPx())
-                            )
-                            continue
-                        }
-                        val t = ((g - (dow - 1) * 0.06f) / 0.64f).coerceIn(0f, 1f)
-                        val full = maxOf(minBar, chartHeight * day.totalSets / maxSets)
-                        val h = full * t
-                        if (h <= 0f) continue
-                        val top = chartBottom - h
-                        val barLeft = cx - barWidth / 2f
-                        drawRoundRect(
-                            color = if (isToday) accent.copy(alpha = 0.22f) else colors.cardHigh,
-                            topLeft = Offset(barLeft, top),
-                            size = Size(barWidth, h),
-                            cornerRadius = barRadius
-                        )
-                        val ratio = day.progress ?: 0f
-                        if (ratio > 0f) {
-                            val fh = h * ratio
-                            drawRoundRect(
-                                color = accent,
-                                topLeft = Offset(barLeft, chartBottom - fh),
-                                size = Size(barWidth, fh),
-                                cornerRadius = barRadius
-                            )
-                        }
-                        if (isToday) {
-                            drawRoundRect(
-                                color = accent,
-                                topLeft = Offset(barLeft, top),
-                                size = Size(barWidth, h),
-                                cornerRadius = barRadius,
-                                style = outline
-                            )
-                        }
-                    }
+        modifier = modifier
+            .size(GaugeSize)
+            .pointerInput(byDow) {
+                detectTapGestures { position ->
+                    val dx = position.x - size.width / 2f
+                    val dy = position.y - size.height / 2f
+                    val distance = hypot(dx, dy)
+                    if (distance < RingRadius.toPx() - 30.dp.toPx() || distance > LabelRadius.toPx() + 16.dp.toPx()) return@detectTapGestures
+                    var angle = Math.toDegrees(atan2(dx.toDouble(), (-dy).toDouble())).toFloat()
+                    if (angle < 0f) angle += 360f
+                    val dow = (angle / SEGMENT_SPAN).toInt().coerceIn(0, 6) + 1
+                    if (byDow.containsKey(dow)) onDayClick(dow)
                 }
-            }
+            },
+        contentAlignment = Alignment.Center
     ) {
-        Row(modifier = Modifier.fillMaxSize()) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val c = center
+            drawCircle(disc, radius = DiscRadius.toPx(), center = c)
+            drawCircle(colors.hairlineStrong, radius = DiscRadius.toPx(), center = c, style = Stroke(1.dp.toPx()))
+
+            val todayStart = (todayDow - 1) * SEGMENT_SPAN
+            val todayEnd = todayDow * SEGMENT_SPAN
+            for (k in 0 until 60) {
+                val a = k * 6f
+                val lit = a >= todayStart && a <= todayEnd
+                val outer = when {
+                    lit -> TickMajor.toPx()
+                    k % 5 == 0 -> TickMajor.toPx()
+                    else -> TickOuter.toPx()
+                }
+                val inner = TickInner.toPx()
+                drawLine(
+                    color = if (lit) todayTicks else tickDim,
+                    start = polar(c, inner, a),
+                    end = polar(c, outer, a),
+                    strokeWidth = if (lit) 2.dp.toPx() else 1.2.dp.toPx(),
+                    cap = StrokeCap.Butt
+                )
+            }
+
+            val ring = RingRadius.toPx()
+            val stroke = RingWidth.toPx()
+            val arcTopLeft = Offset(c.x - ring, c.y - ring)
+            val arcSize = Size(ring * 2f, ring * 2f)
+            val g = grow.value
+            for (dow in 1..7) {
+                val start = (dow - 1) * SEGMENT_SPAN + SEGMENT_GAP
+                val sweep = SEGMENT_SPAN - SEGMENT_GAP * 2f
+                drawArc(track, start - 90f, sweep, false, arcTopLeft, arcSize, style = Stroke(stroke))
+                val day = byDow[dow] ?: continue
+                if (day.isRest) {
+                    drawArc(colors.tideText.copy(alpha = 0.35f), start - 90f, sweep, false, arcTopLeft, arcSize, style = Stroke(stroke))
+                    continue
+                }
+                val t = ((g - (dow - 1) * 0.06f) / 0.64f).coerceIn(0f, 1f)
+                val fill = (day.progress ?: 0f) * t
+                if (fill <= 0f) continue
+                val color = if (dow == todayDow) todayArc else colors.volt
+                if (dow != todayDow || todayHalo) {
+                    drawArc(color.copy(alpha = 0.22f), start - 90f, sweep * fill, false, arcTopLeft, arcSize, style = Stroke(stroke + 8.dp.toPx()))
+                }
+                drawArc(color, start - 90f, sweep * fill, false, arcTopLeft, arcSize, style = Stroke(stroke))
+            }
+
+            val labelRadius = LabelRadius.toPx()
             for (dow in 1..7) {
                 val day = byDow[dow]
-                val isToday = dow == todayDow
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .clip(RoundedCornerShape(16.dp))
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                            role = Role.Button
-                        ) { onDayClick(dow) }
-                        .padding(bottom = 6.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Bottom
-                ) {
-                    Text(
-                        text = DayLetters[dow - 1],
-                        style = MaterialTheme.typography.labelSmall,
-                        color = if (isToday) accent else colors.textTertiary
-                    )
-                    Spacer(Modifier.height(3.dp))
-                    Box(
-                        modifier = Modifier
-                            .size(28.dp)
-                            .clip(CircleShape)
-                            .background(if (isToday) primary else Color.Transparent),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "${day?.date?.dayOfMonth ?: ""}",
-                            style = MaterialTheme.typography.titleSmall,
-                            color = when {
-                                isToday -> onPrimary
-                                day?.isComplete == true -> colors.leafText
-                                else -> colors.textSecondary
-                            }
-                        )
-                    }
+                val labelColor = when (day?.state(today)) {
+                    DayState.TODAY -> colors.voltText
+                    DayState.REST -> colors.tideText
+                    DayState.COMPLETE -> colors.leafText
+                    else -> colors.textTertiary
                 }
+                val layout = measurer.measure(DayLetters[dow - 1], labelStyle.copy(color = labelColor))
+                val p = polar(c, labelRadius, (dow - 0.5f) * SEGMENT_SPAN)
+                drawText(layout, topLeft = Offset(p.x - layout.size.width / 2f, p.y - layout.size.height / 2f))
             }
         }
+
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                text = "SERIES",
+                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, letterSpacing = 2.sp),
+                color = colors.textTertiary
+            )
+            Text(
+                text = "$doneSets",
+                style = TextStyle(fontFamily = DisplayFamily, fontWeight = FontWeight.Black, fontSize = 64.sp, lineHeight = 62.sp),
+                color = colors.voltText
+            )
+            Text(
+                text = "DE $plannedSets",
+                style = TextStyle(fontFamily = DisplayFamily, fontWeight = FontWeight.ExtraBold, fontSize = 20.sp, lineHeight = 22.sp),
+                color = colors.textTertiary
+            )
+        }
     }
+}
+
+private fun polar(center: Offset, radius: Float, degrees: Float): Offset {
+    val radians = Math.toRadians((degrees - 90f).toDouble())
+    return Offset(center.x + radius * cos(radians).toFloat(), center.y + radius * sin(radians).toFloat())
 }
 
 @Composable
@@ -430,41 +482,54 @@ private fun SectionLabel() {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = Spacing.md, bottom = Spacing.xs),
+            .padding(top = Spacing.sm, bottom = Spacing.xs),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.md)
     ) {
-        Text(text = "PLAN DIARIO", style = MaterialTheme.typography.headlineSmall, color = colors.textPrimary)
+        Text(text = "RUTINA POR DÍA", style = MaterialTheme.typography.headlineSmall, color = colors.textPrimary)
         Box(
             Modifier
                 .weight(1f)
                 .height(1.dp)
                 .background(colors.hairline)
         )
-        Overline(text = "Toca un día", color = colors.textTertiary)
+    }
+}
+
+private fun Modifier.dayFrame(
+    shape: Shape,
+    fill: Color,
+    border: Color,
+    glow: Color?
+): Modifier = drawWithCache {
+    val outline = shape.createOutline(size, layoutDirection, this)
+    onDrawBehind {
+        if (glow != null) {
+            drawOutline(outline, glow, alpha = 0.08f, style = Stroke(16.dp.toPx(), join = StrokeJoin.Miter))
+            drawOutline(outline, glow, alpha = 0.18f, style = Stroke(7.dp.toPx(), join = StrokeJoin.Miter))
+            drawOutline(outline, glow, alpha = 0.45f, style = Stroke(3.dp.toPx(), join = StrokeJoin.Miter))
+        }
+        drawOutline(outline, fill)
+        drawOutline(outline, border, style = Stroke(if (glow != null) 1.5.dp.toPx() else 1.dp.toPx(), join = StrokeJoin.Miter))
     }
 }
 
 @Composable
-private fun DateBadge(
-    date: LocalDate,
-    background: Color,
-    content: Color,
-    modifier: Modifier = Modifier
-) {
+private fun DateColumn(date: LocalDate, accent: Color, number: Color) {
     val abbreviation = remember(date) {
-        date.dayOfWeek.getDisplayName(TextStyle.SHORT, MexicoLocale).replace(".", "").uppercase(MexicoLocale)
+        date.dayOfWeek.getDisplayName(DateTextStyle.SHORT, MexicoLocale).replace(".", "").uppercase(MexicoLocale)
     }
-    Column(
-        modifier = modifier
-            .size(width = 52.dp, height = 58.dp)
-            .clip(BadgeShape)
-            .background(background),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Text(text = abbreviation, style = MaterialTheme.typography.labelSmall, color = content.copy(alpha = 0.8f))
-        Text(text = "${date.dayOfMonth}", style = DarmixTextStyles.MetricSmall, color = content)
+    Column(modifier = Modifier.width(46.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(
+            text = abbreviation,
+            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, letterSpacing = 1.3.sp),
+            color = accent
+        )
+        Text(
+            text = "${date.dayOfMonth}",
+            style = TextStyle(fontFamily = DisplayFamily, fontWeight = FontWeight.Black, fontSize = 30.sp, lineHeight = 30.sp),
+            color = number
+        )
     }
 }
 
@@ -478,20 +543,15 @@ private fun DayCard(
     modifier: Modifier = Modifier
 ) {
     val colors = DarmixTheme.colors
-    val isToday = day.date == today
-    val isPast = day.date.isBefore(today)
-    val shape = DarmixShapes.Card
+    val state = day.state(today)
+    val isToday = state == DayState.TODAY
+    val strip = stateColor(state, colors)
+    val muted = state == DayState.MISSED || state == DayState.UPCOMING
     val rotation by animateFloatAsState(
         targetValue = if (expanded) 180f else 0f,
         animationSpec = Motion.snappy(),
         label = "chevron"
     )
-    val (badgeBg, badgeFg) = when {
-        isToday -> MaterialTheme.colorScheme.primary to MaterialTheme.colorScheme.onPrimary
-        day.isComplete -> colors.leafSoft to colors.leafText
-        isPast -> colors.cardHigh to colors.textSecondary
-        else -> colors.cardHigh to colors.textPrimary
-    }
     val meta = remember(day) {
         buildString {
             append(if (day.exerciseCount == 1) "1 ejercicio" else "${day.exerciseCount} ejercicios")
@@ -500,173 +560,215 @@ private fun DayCard(
         }
     }
 
-    Column(
+    Row(
         modifier = modifier
             .fillMaxWidth()
-            .clip(shape)
-            .background(colors.card)
-            .then(
-                if (isToday) {
-                    Modifier
-                        .drawBehind {
-                            drawRect(
-                                brush = Brush.verticalGradient(
-                                    listOf(colors.voltText.copy(alpha = if (colors.isDark) 0.10f else 0.08f), Color.Transparent),
-                                    endY = size.height * 0.5f
-                                )
-                            )
-                        }
-                        .border(1.5.dp, colors.voltText.copy(alpha = 0.7f), shape)
-                } else {
-                    Modifier.border(1.dp, colors.hairline, shape)
-                }
+            .height(IntrinsicSize.Min)
+            .dayFrame(
+                shape = CardShape,
+                fill = colors.card,
+                border = if (isToday) colors.voltText else colors.hairline,
+                glow = if (isToday) colors.volt else null
             )
+            .clip(CardShape)
             .clickable(role = Role.Button, onClick = onToggle)
-            .padding(Spacing.md + 2.dp),
-        verticalArrangement = Arrangement.spacedBy(Spacing.md)
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
-            DateBadge(date = day.date, background = badgeBg, content = badgeFg)
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text(
-                    text = day.title,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = colors.textPrimary,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = meta,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = colors.textSecondary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                DayStatus(day = day, isToday = isToday, isPast = isPast)
-            }
-            Icon(
-                Icons.Rounded.KeyboardArrowDown,
-                contentDescription = if (expanded) "Contraer" else "Expandir",
-                tint = colors.textSecondary,
+        Box(
+            modifier = Modifier
+                .width(6.dp)
+                .fillMaxHeight()
+                .background(strip)
+        )
+        Column(modifier = Modifier.weight(1f)) {
+            Row(
                 modifier = Modifier
-                    .size(24.dp)
-                    .graphicsLayer { rotationZ = rotation }
-            )
-        }
+                    .fillMaxWidth()
+                    .height(IntrinsicSize.Min)
+                    .padding(start = 8.dp, end = 14.dp, top = 12.dp, bottom = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                DateColumn(
+                    date = day.date,
+                    accent = if (muted) colors.textTertiary else strip,
+                    number = if (muted) colors.textSecondary else colors.textPrimary
+                )
+                Spacer(Modifier.width(10.dp))
+                Box(
+                    modifier = Modifier
+                        .width(1.dp)
+                        .fillMaxHeight()
+                        .background(colors.hairline)
+                )
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(start = 14.dp, end = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    Text(
+                        text = day.title,
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold, fontSize = 15.sp, lineHeight = 19.sp),
+                        color = colors.textPrimary,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = meta,
+                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
+                        color = colors.textSecondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    DayStatus(day = day, state = state)
+                }
+                Icon(
+                    Icons.Rounded.KeyboardArrowDown,
+                    contentDescription = if (expanded) "Contraer" else "Expandir",
+                    tint = colors.textSecondary,
+                    modifier = Modifier
+                        .size(22.dp)
+                        .graphicsLayer { rotationZ = rotation }
+                )
+            }
 
-        val progress = day.progress
-        if (progress != null && progress > 0f && progress < 1f) {
-            ProgressLine(progress = progress, color = colors.voltText)
-        }
+            val progress = day.progress
+            if (state == DayState.PARTIAL && progress != null) {
+                ProgressLine(
+                    progress = progress,
+                    color = colors.voltText,
+                    modifier = Modifier.padding(start = 72.dp, end = 14.dp, bottom = 10.dp)
+                )
+            }
 
-        AnimatedVisibility(
-            visible = !expanded,
-            enter = fadeIn(Motion.enter()) + expandVertically(Motion.enter()),
-            exit = fadeOut(Motion.exit()) + shrinkVertically(Motion.exit())
-        ) {
-            ThumbStack(entries = day.entries)
-        }
-        AnimatedVisibility(
-            visible = expanded,
-            enter = fadeIn(Motion.enter()) + expandVertically(Motion.enter()),
-            exit = fadeOut(Motion.exit()) + shrinkVertically(Motion.exit())
-        ) {
-            ExerciseList(entries = day.entries, onImageClick = onImageClick)
+            AnimatedVisibility(
+                visible = !expanded,
+                enter = fadeIn(Motion.enter()) + expandVertically(Motion.enter()),
+                exit = fadeOut(Motion.exit()) + shrinkVertically(Motion.exit())
+            ) {
+                ThumbRow(
+                    entries = day.entries,
+                    modifier = Modifier.padding(start = 72.dp, end = 14.dp, bottom = 12.dp)
+                )
+            }
+            AnimatedVisibility(
+                visible = expanded,
+                enter = fadeIn(Motion.enter()) + expandVertically(Motion.enter()),
+                exit = fadeOut(Motion.exit()) + shrinkVertically(Motion.exit())
+            ) {
+                ExerciseList(
+                    entries = day.entries,
+                    onImageClick = onImageClick,
+                    modifier = Modifier.padding(start = 12.dp, end = 14.dp, bottom = 14.dp)
+                )
+            }
         }
     }
 }
 
 @Composable
-private fun DayStatus(day: WeekDay, isToday: Boolean, isPast: Boolean) {
+private fun DayStatus(day: WeekDay, state: DayState) {
     val colors = DarmixTheme.colors
     val done = day.doneSets ?: 0
     val planned = day.plannedSets ?: day.totalSets
-    when {
-        isToday -> Row(
-            modifier = Modifier.padding(top = 3.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
-        ) {
-            StatusTag(
-                text = "Hoy",
-                container = MaterialTheme.colorScheme.primary,
-                content = MaterialTheme.colorScheme.onPrimary,
-                pulse = !day.isComplete,
-                icon = if (day.isComplete) Icons.Rounded.Check else null
-            )
-            if (done > 0) {
-                Text(text = "$done/$planned series", style = MaterialTheme.typography.labelMedium, color = colors.voltText)
+    Row(
+        modifier = Modifier.padding(top = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
+    ) {
+        when (state) {
+            DayState.TODAY -> {
+                HudTag(
+                    text = "HOY",
+                    color = colors.volt,
+                    filled = true,
+                    icon = if (day.isComplete) Icons.Rounded.Check else null
+                )
+                if (done > 0) {
+                    Text(
+                        text = "$done/$planned series",
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.ExtraBold),
+                        color = colors.voltText
+                    )
+                }
             }
+            DayState.COMPLETE -> HudTag(text = "COMPLETADO", color = colors.leafText)
+            DayState.PARTIAL -> {
+                HudTag(text = "PARCIAL", color = colors.voltText)
+                Text(
+                    text = "$done/$planned series",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = colors.textSecondary
+                )
+            }
+            DayState.MISSED -> HudTag(text = "NO REALIZADO", color = colors.textSecondary)
+            DayState.UPCOMING -> HudTag(text = "PENDIENTE", color = colors.textTertiary)
+            DayState.REST -> Unit
         }
-
-        day.isComplete -> StatusTag(
-            text = "Completado",
-            container = colors.leafSoft,
-            content = colors.leafText,
-            icon = Icons.Rounded.Check,
-            modifier = Modifier.padding(top = 3.dp)
-        )
-
-        isPast && done > 0 -> Row(
-            modifier = Modifier.padding(top = 3.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
-        ) {
-            StatusTag(text = "Parcial", container = colors.voltText.copy(alpha = 0.14f), content = colors.voltText)
-            Text(text = "$done/$planned series", style = MaterialTheme.typography.labelMedium, color = colors.textSecondary)
-        }
-
-        isPast -> StatusTag(
-            text = "Sin registro",
-            container = colors.cardHigh,
-            content = colors.textTertiary,
-            modifier = Modifier.padding(top = 3.dp)
-        )
-
-        else -> Unit
     }
 }
 
 @Composable
-private fun ProgressLine(progress: Float, color: Color) {
-    val track = DarmixTheme.colors.cardHigh
+private fun HudTag(text: String, color: Color, filled: Boolean = false, icon: ImageVector? = null) {
+    val colors = DarmixTheme.colors
+    val content = if (filled) colors.onVolt else color
+    val base = Modifier
+        .height(24.dp)
+        .clip(TagShape)
+    val styled = if (filled) {
+        base.background(color)
+    } else {
+        base
+            .background(colors.card)
+            .border(1.dp, color, TagShape)
+    }
+    Row(
+        modifier = styled.padding(start = 9.dp, end = 11.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(5.dp)
+    ) {
+        if (icon != null) {
+            Icon(icon, contentDescription = null, tint = content, modifier = Modifier.size(13.dp))
+        }
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp, letterSpacing = 1.5.sp),
+            color = content,
+            maxLines = 1
+        )
+    }
+}
+
+@Composable
+private fun ProgressLine(progress: Float, color: Color, modifier: Modifier = Modifier) {
+    val track = DarmixTheme.colors.hairline
     Box(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .height(4.dp)
-            .clip(CircleShape)
             .background(track)
             .drawBehind {
-                drawRoundRect(
-                    color = color,
-                    size = size.copy(width = size.width * progress),
-                    cornerRadius = CornerRadius(size.height / 2f)
-                )
+                drawRect(color = color, size = size.copy(width = size.width * progress))
             }
     )
 }
 
 @Composable
-private fun ThumbStack(entries: List<List<ExerciseEntity>>) {
+private fun ThumbRow(entries: List<List<ExerciseEntity>>, modifier: Modifier = Modifier) {
     val colors = DarmixTheme.colors
     val exercises = remember(entries) { entries.flatten() }
     val shown = exercises.take(5)
     val extra = exercises.size - shown.size
     Row(
-        horizontalArrangement = Arrangement.spacedBy((-10).dp),
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         shown.forEach { exercise ->
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(colors.card)
-                    .padding(2.dp)
-            ) {
+            Box(modifier = Modifier.clip(ThumbShape)) {
                 ExerciseImage(
                     imageName = exercise.imageUri,
                     exerciseName = exercise.name,
-                    size = 38.dp,
+                    size = 32.dp,
                     animated = false
                 )
             }
@@ -674,28 +776,25 @@ private fun ThumbStack(entries: List<List<ExerciseEntity>>) {
         if (extra > 0) {
             Box(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(colors.card)
-                    .padding(2.dp)
+                    .size(32.dp)
+                    .clip(ThumbShape)
+                    .background(colors.cardHigh),
+                contentAlignment = Alignment.Center
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(38.dp)
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(colors.cardHigh),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(text = "+$extra", style = MaterialTheme.typography.labelLarge, color = colors.textSecondary)
-                }
+                Text(text = "+$extra", style = MaterialTheme.typography.labelMedium, color = colors.textSecondary)
             }
         }
     }
 }
 
 @Composable
-private fun ExerciseList(entries: List<List<ExerciseEntity>>, onImageClick: (ExerciseEntity) -> Unit) {
+private fun ExerciseList(
+    entries: List<List<ExerciseEntity>>,
+    onImageClick: (ExerciseEntity) -> Unit,
+    modifier: Modifier = Modifier
+) {
     val colors = DarmixTheme.colors
-    Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm + 2.dp)) {
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(Spacing.sm + 2.dp)) {
         Box(
             Modifier
                 .fillMaxWidth()
@@ -716,9 +815,9 @@ private fun ExerciseList(entries: List<List<ExerciseEntity>>, onImageClick: (Exe
 private fun NumberLabel(number: Int, color: Color, modifier: Modifier = Modifier) {
     Text(
         text = number.toString().padStart(2, '0'),
-        style = MaterialTheme.typography.headlineSmall,
+        style = TextStyle(fontFamily = DisplayFamily, fontWeight = FontWeight.Black, fontSize = 26.sp, lineHeight = 26.sp),
         color = color,
-        modifier = modifier.width(28.dp)
+        modifier = modifier.width(30.dp)
     )
 }
 
@@ -731,13 +830,15 @@ private fun ExerciseLine(number: Int, exercise: ExerciseEntity, onImageClick: (E
         horizontalArrangement = Arrangement.spacedBy(Spacing.md)
     ) {
         NumberLabel(number = number, color = colors.textTertiary)
-        ExerciseImage(
-            imageName = exercise.imageUri,
-            exerciseName = exercise.name,
-            size = 50.dp,
-            animated = false,
-            onClick = if (exercise.imageUri != null) ({ onImageClick(exercise) }) else null
-        )
+        Box(modifier = Modifier.clip(ImageShape)) {
+            ExerciseImage(
+                imageName = exercise.imageUri,
+                exerciseName = exercise.name,
+                size = 52.dp,
+                animated = false,
+                onClick = if (exercise.imageUri != null) ({ onImageClick(exercise) }) else null
+            )
+        }
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(
                 text = exercise.name,
@@ -748,7 +849,7 @@ private fun ExerciseLine(number: Int, exercise: ExerciseEntity, onImageClick: (E
             )
             Text(
                 text = "${exercise.sets} × ${exercise.reps}",
-                style = MaterialTheme.typography.bodySmall,
+                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
                 color = colors.voltText,
                 maxLines = 1
             )
@@ -765,42 +866,50 @@ private fun SupersetGroup(number: Int, members: List<ExerciseEntity>, onImageCli
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(DarmixShapes.Control)
+            .clip(SupersetShape)
             .background(tide.copy(alpha = 0.07f))
-            .border(1.dp, tide.copy(alpha = 0.25f), DarmixShapes.Control)
-            .padding(Spacing.sm + 2.dp),
-        verticalArrangement = Arrangement.spacedBy(Spacing.sm + 2.dp)
+            .border(1.dp, tide.copy(alpha = 0.45f), SupersetShape)
+            .padding(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(Spacing.sm)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
             NumberLabel(number = number, color = tide)
-            StatusTag(text = "Superserie", container = tide.copy(alpha = 0.16f), content = tide, icon = Icons.Rounded.Repeat)
+            HudTag(text = "SUPERSERIE", color = tide, icon = Icons.Rounded.Repeat)
             Spacer(Modifier.weight(1f))
-            Text(text = "$rounds rondas", style = MaterialTheme.typography.labelMedium, color = tide)
+            Text(
+                text = "$rounds RONDAS",
+                style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp, letterSpacing = 1.sp),
+                color = tide
+            )
         }
         members.forEachIndexed { index, exercise ->
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(Spacing.md)
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Box(modifier = Modifier.width(28.dp), contentAlignment = Alignment.Center) {
-                    Box(
-                        modifier = Modifier
-                            .size(24.dp)
-                            .clip(DarmixShapes.Tag)
-                            .background(tide),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(text = ('A' + index).toString(), style = MaterialTheme.typography.labelLarge, color = onTide)
-                    }
+                Box(
+                    modifier = Modifier
+                        .size(22.dp)
+                        .clip(CutCornerShape(topEnd = 5.dp, bottomStart = 5.dp))
+                        .background(tide),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = ('A' + index).toString(),
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp, fontWeight = FontWeight.Black),
+                        color = onTide
+                    )
                 }
-                ExerciseImage(
-                    imageName = exercise.imageUri,
-                    exerciseName = exercise.name,
-                    size = 44.dp,
-                    animated = false,
-                    onClick = if (exercise.imageUri != null) ({ onImageClick(exercise) }) else null
-                )
+                Box(modifier = Modifier.clip(CutCornerShape(7.dp))) {
+                    ExerciseImage(
+                        imageName = exercise.imageUri,
+                        exerciseName = exercise.name,
+                        size = 46.dp,
+                        animated = false,
+                        onClick = if (exercise.imageUri != null) ({ onImageClick(exercise) }) else null
+                    )
+                }
                 Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(
                         text = exercise.name,
@@ -809,7 +918,12 @@ private fun SupersetGroup(number: Int, members: List<ExerciseEntity>, onImageCli
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
-                    Text(text = exercise.reps, style = MaterialTheme.typography.bodySmall, color = tide, maxLines = 1)
+                    Text(
+                        text = exercise.reps,
+                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+                        color = tide,
+                        maxLines = 1
+                    )
                 }
             }
         }
@@ -817,64 +931,104 @@ private fun SupersetGroup(number: Int, members: List<ExerciseEntity>, onImageCli
 }
 
 @Composable
-private fun RestDayRow(day: WeekDay, isToday: Boolean, modifier: Modifier = Modifier) {
+private fun RestDayCard(day: WeekDay, isToday: Boolean, modifier: Modifier = Modifier) {
     val colors = DarmixTheme.colors
-    val shape = DarmixShapes.Card
+    val tide = colors.tideText
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .clip(shape)
-            .background(colors.card)
-            .border(
-                width = if (isToday) 1.5.dp else 1.dp,
-                color = if (isToday) colors.tideText.copy(alpha = 0.6f) else colors.hairline,
-                shape = shape
+            .height(IntrinsicSize.Min)
+            .dayFrame(
+                shape = CardShape,
+                fill = lerp(colors.card, colors.tide, 0.03f),
+                border = if (isToday) tide.copy(alpha = 0.7f) else colors.hairline,
+                glow = null
             )
-            .padding(Spacing.md + 2.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(Spacing.md)
+            .clip(CardShape)
     ) {
-        DateBadge(date = day.date, background = colors.tideSoft, content = colors.tideText)
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            Text(
-                text = day.title,
-                style = MaterialTheme.typography.titleMedium,
-                color = colors.textPrimary,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
+        Box(
+            modifier = Modifier
+                .width(6.dp)
+                .fillMaxHeight()
+                .background(tide)
+        )
+        Row(
+            modifier = Modifier
+                .weight(1f)
+                .padding(start = 8.dp, end = 14.dp, top = 12.dp, bottom = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            DateColumn(date = day.date, accent = tide, number = colors.textPrimary)
+            Spacer(Modifier.width(10.dp))
+            Box(
+                modifier = Modifier
+                    .width(1.dp)
+                    .fillMaxHeight()
+                    .background(colors.hairline)
             )
-            Text(text = "Recuperación · aquí también se crece", style = MaterialTheme.typography.bodySmall, color = colors.textSecondary)
-            if (isToday) {
-                StatusTag(
-                    text = "Hoy",
-                    container = colors.tideText.copy(alpha = 0.16f),
-                    content = colors.tideText,
-                    modifier = Modifier.padding(top = 3.dp)
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(start = 14.dp, end = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                Text(
+                    text = day.title,
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold, fontSize = 15.sp, lineHeight = 19.sp),
+                    color = colors.textPrimary,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
                 )
+                Text(
+                    text = "Recuperación · aquí también se crece",
+                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
+                    color = colors.textSecondary
+                )
+                if (isToday) {
+                    Box(modifier = Modifier.padding(top = 6.dp)) {
+                        HudTag(text = "HOY", color = tide)
+                    }
+                }
             }
+            ChargingBattery(size = 28.dp)
         }
-        Crescent(color = colors.tide, size = 26.dp)
     }
 }
 
 @Composable
-private fun Crescent(color: Color, size: Dp) {
-    Canvas(modifier = Modifier.size(size)) {
-        val r = this.size.minDimension / 2f
-        val c = center
-        val body = Path().apply { addOval(Rect(c, r * 0.85f)) }
-        val bite = Path().apply { addOval(Rect(c + Offset(r * 0.55f, -r * 0.35f), r * 0.8f)) }
-        drawPath(Path().apply { op(body, bite, PathOperation.Difference) }, color)
+private fun ChargingBattery(size: Dp) {
+    val colors = DarmixTheme.colors
+    val tide = colors.tideText
+    val deep = lerp(colors.tide, Color.Black, 0.25f)
+    val bolt = colors.onTide
+    val boltPath = remember {
+        Path().apply {
+            moveTo(11.9f, 9.3f)
+            lineTo(9.2f, 12.4f)
+            lineTo(12.6f, 12.4f)
+            lineTo(10.1f, 15.5f)
+        }
     }
-}
-
-private fun formatRange(start: LocalDate): String {
-    val end = start.plusDays(6)
-    val startMonth = start.format(MonthFormatter).replace(".", "")
-    val endMonth = end.format(MonthFormatter).replace(".", "")
-    return if (start.month == end.month) {
-        "${start.dayOfMonth} – ${end.dayOfMonth} $endMonth"
-    } else {
-        "${start.dayOfMonth} $startMonth – ${end.dayOfMonth} $endMonth"
+    Canvas(modifier = Modifier.size(size)) {
+        val unit = this.size.minDimension / 24f
+        val line = 1.8f * unit
+        drawCircle(tide.copy(alpha = 0.12f), radius = 11f * unit, center = center)
+        drawRoundRect(
+            color = tide,
+            topLeft = Offset(2.5f * unit, 7f * unit),
+            size = Size(17f * unit, 10f * unit),
+            cornerRadius = CornerRadius(2f * unit),
+            style = Stroke(line)
+        )
+        drawLine(tide, Offset(22f * unit, 10.5f * unit), Offset(22f * unit, 13.5f * unit), strokeWidth = line, cap = StrokeCap.Round)
+        drawRoundRect(
+            brush = Brush.horizontalGradient(listOf(deep, colors.tide), startX = 4.4f * unit, endX = 17.6f * unit),
+            topLeft = Offset(4.4f * unit, 8.9f * unit),
+            size = Size(13.2f * unit, 6.2f * unit),
+            cornerRadius = CornerRadius(0.8f * unit)
+        )
+        val scaled = Path().apply { addPath(boltPath) }
+        scaled.transform(Matrix().apply { scale(unit, unit) })
+        drawPath(scaled, bolt, style = Stroke(1.7f * unit, cap = StrokeCap.Round, join = StrokeJoin.Round))
     }
 }
