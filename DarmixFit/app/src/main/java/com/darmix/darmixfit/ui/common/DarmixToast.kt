@@ -57,10 +57,8 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.dp
 import com.darmix.darmixfit.ui.components.Overline
 import com.darmix.darmixfit.ui.theme.DarmixPalette
@@ -129,7 +127,6 @@ private fun DarmixToast(data: SnackbarData) {
         SnackbarDuration.Indefinite -> 10000
     }
 
-    val haptic = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
     val timer = remember { Animatable(1f) }
     val glyph = remember { Animatable(0f) }
@@ -137,7 +134,6 @@ private fun DarmixToast(data: SnackbarData) {
     var width by remember { mutableFloatStateOf(1f) }
 
     LaunchedEffect(Unit) {
-        haptic.performHapticFeedback(if (type == MessageType.ERROR) HapticFeedbackType.Reject else HapticFeedbackType.Confirm)
         glyph.animateTo(1f, tween(480, delayMillis = 140, easing = Motion.Emphasized))
     }
     LaunchedEffect(Unit) {
@@ -224,7 +220,7 @@ private fun DarmixToast(data: SnackbarData) {
         Column(modifier = Modifier.weight(1f)) {
             Overline(text = label, color = accent)
             Text(
-                text = visuals.message,
+                text = emphasized(visuals.message),
                 style = MaterialTheme.typography.bodyMedium,
                 color = colors.textPrimary,
                 maxLines = 3

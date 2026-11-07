@@ -1,27 +1,38 @@
 package com.darmix.darmixfit.ui.programs
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CutCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
@@ -38,6 +49,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -52,16 +64,29 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Matrix
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawOutline
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.darmix.darmixfit.data.ExerciseCatalog
 import com.darmix.darmixfit.data.ProgramEntity
@@ -70,26 +95,31 @@ import com.darmix.darmixfit.data.ProgramTemplates
 import com.darmix.darmixfit.data.TemplateExercise
 import com.darmix.darmixfit.ui.common.DarmixToastHost
 import com.darmix.darmixfit.ui.common.showToast
-import com.darmix.darmixfit.ui.components.DarmixButton
-import com.darmix.darmixfit.ui.components.DarmixButtonStyle
 import com.darmix.darmixfit.ui.components.DarmixConfirmDialog
-import com.darmix.darmixfit.ui.components.DarmixIconButton
 import com.darmix.darmixfit.ui.components.DarmixSheet
-import com.darmix.darmixfit.ui.components.DarmixTextField
 import com.darmix.darmixfit.ui.components.ExerciseImage
-import com.darmix.darmixfit.ui.components.InfoChip
-import com.darmix.darmixfit.ui.components.Overline
-import com.darmix.darmixfit.ui.components.PulseDot
 import com.darmix.darmixfit.ui.theme.DarmixColors
 import com.darmix.darmixfit.ui.theme.DarmixPalette
-import com.darmix.darmixfit.ui.theme.DarmixShapes
-import com.darmix.darmixfit.ui.theme.DarmixTextStyles
 import com.darmix.darmixfit.ui.theme.DarmixTheme
+import com.darmix.darmixfit.ui.theme.DisplayFamily
+import com.darmix.darmixfit.ui.theme.Motion
 import com.darmix.darmixfit.ui.theme.Spacing
 
 private val DayLetters = listOf("L", "M", "X", "J", "V", "S", "D")
 private val DayShort = listOf("LUN", "MAR", "MIÉ", "JUE", "VIE", "SÁB", "DOM")
-private val EmblemShape = RoundedCornerShape(16.dp)
+
+private val HeroShape = CutCornerShape(topEnd = 20.dp, bottomStart = 20.dp)
+private val CardShape = CutCornerShape(topEnd = 16.dp)
+private val PlateShape = CutCornerShape(topEnd = 10.dp, bottomStart = 10.dp)
+private val TagShape = CutCornerShape(topEnd = 7.dp, bottomStart = 7.dp)
+private val EmblemShape = CutCornerShape(12.dp)
+private val BarShape = CutCornerShape(8.dp)
+private val CellShape = CutCornerShape(5.dp)
+private val FieldShape = CutCornerShape(10.dp)
+private val DayCardShape = CutCornerShape(12.dp)
+private val MenuShape = CutCornerShape(topEnd = 12.dp, bottomStart = 12.dp)
+
+private val Display = TextStyle(fontFamily = DisplayFamily, fontWeight = FontWeight.Black)
 
 private fun formatTime(totalSeconds: Int): String = "%d:%02d".format(totalSeconds / 60, totalSeconds % 60)
 
@@ -110,6 +140,27 @@ private fun accentFor(index: Int, colors: DarmixColors): Color = when (index % 4
     2 -> colors.leafText
     else -> colors.emberText
 }
+
+private fun levelScore(level: String): Int {
+    val lower = level.lowercase()
+    return when {
+        "avanzado" in lower -> 3
+        "intermedio" in lower -> 2
+        "principiante" in lower -> 1
+        else -> 0
+    }
+}
+
+private fun Modifier.glow(shape: Shape, color: Color, strength: Float): Modifier = drawWithCache {
+    val outline = shape.createOutline(size, layoutDirection, this)
+    onDrawBehind {
+        drawOutline(outline, color, alpha = 0.07f * strength, style = Stroke(16.dp.toPx(), join = StrokeJoin.Miter))
+        drawOutline(outline, color, alpha = 0.16f * strength, style = Stroke(7.dp.toPx(), join = StrokeJoin.Miter))
+        drawOutline(outline, color, alpha = 0.4f * strength, style = Stroke(3.dp.toPx(), join = StrokeJoin.Miter))
+    }
+}
+
+private class Stat(val value: String, val label: String, val color: Color)
 
 @Composable
 fun ProgramsScreen(
@@ -140,7 +191,7 @@ fun ProgramsScreen(
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(start = Spacing.screen, end = Spacing.screen, top = Spacing.sm, bottom = Spacing.huge),
-            verticalArrangement = Arrangement.spacedBy(Spacing.md)
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             item(key = "active-label", contentType = "label") {
                 SectionLabel(title = "EN USO")
@@ -204,7 +255,7 @@ fun ProgramsScreen(
 
     renaming?.let { program ->
         NameSheet(
-            overline = "Renombrar",
+            overline = "RENOMBRAR",
             title = "¿Cómo se llama ahora?",
             initial = program.name,
             confirmLabel = "GUARDAR",
@@ -218,7 +269,7 @@ fun ProgramsScreen(
 
     if (creatingBlank) {
         NameSheet(
-            overline = "Programa en blanco",
+            overline = "PROGRAMA EN BLANCO",
             title = "Ponle nombre a tu programa",
             initial = "Mi programa",
             confirmLabel = "CREAR",
@@ -264,7 +315,7 @@ private fun SectionLabel(title: String, count: Int? = null, subtitle: String? = 
     val colors = DarmixTheme.colors
     Column(
         modifier = Modifier.padding(top = Spacing.md, bottom = Spacing.xs),
-        verticalArrangement = Arrangement.spacedBy(Spacing.xs)
+        verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
             Text(text = title, style = MaterialTheme.typography.headlineSmall, color = colors.textPrimary)
@@ -274,10 +325,75 @@ private fun SectionLabel(title: String, count: Int? = null, subtitle: String? = 
                     .height(1.dp)
                     .background(colors.hairline)
             )
-            if (count != null) Overline(text = "$count", color = colors.textTertiary)
+            if (count != null) {
+                Box(
+                    modifier = Modifier
+                        .heightIn(min = 22.dp)
+                        .widthIn(min = 22.dp)
+                        .clip(CellShape)
+                        .background(colors.hairlineStrong)
+                        .padding(horizontal = 6.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "$count",
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp, fontWeight = FontWeight.Black),
+                        color = colors.textPrimary
+                    )
+                }
+            }
         }
         if (subtitle != null) {
-            Text(text = subtitle, style = MaterialTheme.typography.bodySmall, color = colors.textSecondary)
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
+                color = colors.textSecondary
+            )
+        }
+    }
+}
+
+@Composable
+private fun StatBar(stats: List<Stat>, modifier: Modifier = Modifier) {
+    val colors = DarmixTheme.colors
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(IntrinsicSize.Min)
+            .clip(BarShape)
+            .background(colors.canvasDeep)
+            .border(1.dp, colors.hairline, BarShape)
+    ) {
+        stats.forEachIndexed { index, stat ->
+            if (index > 0) {
+                Box(
+                    modifier = Modifier
+                        .width(1.dp)
+                        .fillMaxHeight()
+                        .background(colors.hairline)
+                )
+            }
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(vertical = 8.dp, horizontal = 4.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = stat.value,
+                    style = Display.copy(fontSize = 22.sp, lineHeight = 22.sp),
+                    color = stat.color,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = stat.label,
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp, letterSpacing = 1.4.sp),
+                    color = colors.textTertiary,
+                    maxLines = 1,
+                    modifier = Modifier.padding(top = 3.dp)
+                )
+            }
         }
     }
 }
@@ -291,78 +407,125 @@ private fun ActiveProgramCard(
 ) {
     val colors = DarmixTheme.colors
     val template = remember(program.templateKey) { templateFor(program) }
+    val stats = buildList {
+        if (template != null && template.trainingDays > 0) {
+            add(Stat("${template.trainingDays}", "DÍAS", colors.textPrimary))
+            val score = levelScore(template.level)
+            add(
+                Stat(
+                    when (score) {
+                        3 -> "AVANZ."
+                        2 -> "INTERM."
+                        1 -> "PRINC."
+                        else -> "TODOS"
+                    },
+                    "NIVEL",
+                    colors.textPrimary
+                )
+            )
+        }
+        add(Stat(formatTime(program.restSeconds), "DESCANSO", colors.tideText))
+    }
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(DarmixShapes.Hero)
-            .background(colors.card)
-            .drawWithCache {
-                val center = Offset(size.width, 0f)
-                val radius = size.width * 0.8f
-                val glow = Brush.radialGradient(
-                    listOf(colors.volt.copy(alpha = if (colors.isDark) 0.16f else 0.26f), Color.Transparent),
-                    center = center,
-                    radius = radius
+            .glow(HeroShape, colors.volt, if (colors.isDark) 1f else 0.45f)
+            .clip(HeroShape)
+            .background(
+                Brush.verticalGradient(
+                    0f to lerp(colors.card, colors.volt, if (colors.isDark) 0.07f else 0.08f),
+                    0.4f to colors.card,
+                    1f to colors.card
                 )
-                onDrawBehind { drawCircle(glow, radius = radius, center = center) }
-            }
-            .border(1.5.dp, colors.voltText.copy(alpha = 0.6f), DarmixShapes.Hero)
-            .padding(Spacing.xl),
-        verticalArrangement = Arrangement.spacedBy(Spacing.lg)
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-            PulseDot(color = colors.voltText)
-            Overline(text = "Programa activo", color = colors.voltText)
-        }
-        Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
-            Text(
-                text = program.name.uppercase(),
-                style = MaterialTheme.typography.headlineLarge,
-                color = colors.textPrimary,
-                maxLines = 3,
-                overflow = TextOverflow.Ellipsis
             )
-            if (template != null && template.name != program.name) {
-                Text(text = "Basado en ${template.name}", style = MaterialTheme.typography.bodyMedium, color = colors.textSecondary)
+            .border(1.5.dp, colors.voltText, HeroShape)
+            .padding(start = 16.dp, end = 16.dp, top = 18.dp, bottom = 16.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                modifier = Modifier
+                    .height(24.dp)
+                    .clip(TagShape)
+                    .background(colors.volt)
+                    .padding(horizontal = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(6.dp)
+                        .background(colors.onVolt)
+                )
+                Text(
+                    text = "PROGRAMA ACTIVO",
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp, letterSpacing = 1.5.sp),
+                    color = colors.onVolt
+                )
             }
+            Spacer(Modifier.weight(1f))
+            Text(
+                text = "EN USO",
+                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, letterSpacing = 1.6.sp),
+                color = colors.textTertiary
+            )
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.xs + 2.dp)) {
-            InfoChip(text = "Descanso ${formatTime(program.restSeconds)}", content = colors.tideText)
-            if (template != null && template.trainingDays > 0) {
-                InfoChip(text = "${template.trainingDays} días", content = colors.textPrimary)
-                InfoChip(text = template.level, content = colors.textSecondary)
-            }
+        Text(
+            text = program.name.uppercase(),
+            style = Display.copy(fontSize = 38.sp, lineHeight = 38.sp),
+            color = colors.textPrimary,
+            maxLines = 3,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(top = 12.dp)
+        )
+        if (template != null && template.name != program.name) {
+            Text(
+                text = "Basado en ${template.name}",
+                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                color = colors.textSecondary,
+                modifier = Modifier.padding(top = 4.dp)
+            )
         }
+        StatBar(stats = stats, modifier = Modifier.padding(top = 14.dp))
         if (program.description.isNotBlank()) {
             Text(
                 text = program.description,
-                style = MaterialTheme.typography.bodySmall,
+                style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp, lineHeight = 19.sp, fontWeight = FontWeight.SemiBold),
                 color = colors.textSecondary,
                 maxLines = 3,
-                overflow = TextOverflow.Ellipsis
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 12.dp)
             )
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm + 2.dp)) {
-            DarmixButton(
-                text = "Renombrar",
-                onClick = onRename,
-                style = DarmixButtonStyle.Secondary,
-                icon = Icons.Rounded.Edit,
-                height = 48.dp,
-                haptic = null,
-                modifier = Modifier.weight(1f)
-            )
-            DarmixIconButton(
-                icon = Icons.Rounded.DeleteOutline,
-                contentDescription = "Eliminar",
-                onClick = onDelete,
-                enabled = canDelete,
-                style = DarmixButtonStyle.Secondary,
-                containerColor = colors.emberSoft,
-                contentColor = colors.emberText,
-                size = 48.dp
-            )
+        Row(
+            modifier = Modifier.padding(top = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            GhostPlate(text = "RENOMBRAR", icon = Icons.Rounded.Edit, onClick = onRename, modifier = Modifier.weight(1f))
+            DangerButton(enabled = canDelete, onClick = onDelete)
         }
+    }
+}
+
+@Composable
+private fun DangerButton(enabled: Boolean, onClick: () -> Unit) {
+    val colors = DarmixTheme.colors
+    val shape = CutCornerShape(10.dp)
+    val ember = colors.emberText
+    Box(
+        modifier = Modifier
+            .size(46.dp)
+            .clip(shape)
+            .background(if (enabled) colors.emberSoft else Color.Transparent)
+            .border(1.dp, if (enabled) ember.copy(alpha = 0.6f) else colors.hairline, shape)
+            .clickable(enabled = enabled, role = Role.Button, onClickLabel = "Eliminar", onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            Icons.Rounded.DeleteOutline,
+            contentDescription = "Eliminar",
+            tint = if (enabled) ember else colors.textTertiary.copy(alpha = 0.5f),
+            modifier = Modifier.size(20.dp)
+        )
     }
 }
 
@@ -381,30 +544,31 @@ private fun ProgramRow(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .clip(DarmixShapes.Card)
+            .clip(CardShape)
             .background(colors.card)
-            .border(1.dp, colors.hairline, DarmixShapes.Card)
-            .padding(start = Spacing.md, end = Spacing.xs, top = Spacing.md, bottom = Spacing.md),
+            .border(1.dp, colors.hairline, CardShape)
+            .padding(start = 12.dp, end = 4.dp, top = 12.dp, bottom = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(Spacing.md)
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Box(
             modifier = Modifier
                 .size(46.dp)
                 .clip(EmblemShape)
-                .background(colors.cardHigh),
+                .background(colors.canvasDeep)
+                .border(1.dp, colors.hairlineStrong, EmblemShape),
             contentAlignment = Alignment.Center
         ) {
             Text(
                 text = program.name.firstOrNull { it.isLetter() }?.uppercase() ?: "?",
-                style = DarmixTextStyles.MetricSmall,
+                style = Display.copy(fontSize = 24.sp, lineHeight = 24.sp),
                 color = colors.textSecondary
             )
         }
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(
                 text = program.name,
-                style = MaterialTheme.typography.titleMedium,
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
                 color = colors.textPrimary,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
@@ -414,34 +578,34 @@ private fun ProgramRow(
                     append("Descanso ${formatTime(program.restSeconds)}")
                     if (template != null && template.trainingDays > 0) append(" · ${template.trainingDays} días")
                 },
-                style = MaterialTheme.typography.bodySmall,
+                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
                 color = colors.textSecondary
             )
         }
-        DarmixButton(
-            text = "Activar",
-            onClick = onActivate,
+        AccentPlate(
+            text = "ACTIVAR",
             icon = Icons.Rounded.Bolt,
-            height = 40.dp,
-            shape = DarmixShapes.Pill
+            accent = colors.volt,
+            onClick = onActivate,
+            height = 38.dp,
+            horizontalPadding = 12.dp
         )
         Box {
-            DarmixIconButton(
-                icon = Icons.Rounded.MoreVert,
-                contentDescription = "Opciones",
-                onClick = { menu = true },
-                style = DarmixButtonStyle.Secondary,
-                containerColor = Color.Transparent,
-                contentColor = colors.textSecondary,
-                size = 40.dp,
-                shape = CircleShape
-            )
+            Box(
+                modifier = Modifier
+                    .size(width = 30.dp, height = 40.dp)
+                    .clip(CutCornerShape(6.dp))
+                    .clickable(role = Role.Button, onClickLabel = "Opciones") { menu = true },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Rounded.MoreVert, contentDescription = "Opciones", tint = colors.textSecondary, modifier = Modifier.size(20.dp))
+            }
             DropdownMenu(
                 expanded = menu,
                 onDismissRequest = { menu = false },
-                shape = DarmixShapes.Card,
+                shape = MenuShape,
                 containerColor = colors.cardRaised,
-                border = BorderStroke(1.dp, colors.hairline),
+                border = BorderStroke(1.dp, colors.hairlineStrong),
                 shadowElevation = 12.dp,
                 tonalElevation = 0.dp
             ) {
@@ -471,49 +635,42 @@ private fun MenuItem(text: String, icon: ImageVector, tint: Color, onClick: () -
 }
 
 @Composable
-private fun Emblem(days: Int, accent: Color, size: Dp = 56.dp) {
+private fun Emblem(days: Int, accent: Color, size: Dp = 58.dp) {
     val onAccent = onColorFor(accent)
     Box(
         modifier = Modifier
             .size(size)
             .clip(EmblemShape)
-            .background(Brush.linearGradient(listOf(accent, accent.copy(alpha = 0.7f)))),
+            .background(
+                Brush.linearGradient(
+                    listOf(lerp(accent, Color.White, 0.3f), accent, lerp(accent, Color.Black, 0.35f))
+                )
+            ),
         contentAlignment = Alignment.Center
     ) {
-        Row(verticalAlignment = Alignment.Bottom) {
-            Text(text = "$days", style = DarmixTextStyles.Metric.copy(fontSize = DarmixTextStyles.Metric.fontSize * 0.8f), color = onAccent)
-            Text(
-                text = "D",
-                style = MaterialTheme.typography.titleSmall,
-                color = onAccent.copy(alpha = 0.75f),
-                modifier = Modifier.padding(bottom = 3.dp)
-            )
-        }
+        Text(
+            text = "$days",
+            style = Display.copy(fontSize = (size.value * 0.66f).sp, lineHeight = (size.value * 0.7f).sp),
+            color = onAccent
+        )
     }
 }
 
 @Composable
 private fun LevelMeter(level: String, accent: Color) {
     val colors = DarmixTheme.colors
-    val lower = level.lowercase()
-    val score = when {
-        "avanzado" in lower -> 3
-        "intermedio" in lower -> 2
-        "principiante" in lower -> 1
-        else -> 0
-    }
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-        Row(horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.Bottom) {
+    val score = levelScore(level)
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.Bottom) {
             for (i in 1..3) {
                 Box(
                     modifier = Modifier
-                        .size(width = 5.dp, height = (5 + i * 3).dp)
-                        .clip(CircleShape)
+                        .size(width = 4.dp, height = (4 + i * 3).dp)
                         .background(
                             when {
-                                score == 0 -> accent.copy(alpha = 0.45f)
+                                score == 0 -> accent
                                 i <= score -> accent
-                                else -> colors.cardHigh
+                                else -> colors.hairlineStrong
                             }
                         )
                 )
@@ -531,33 +688,24 @@ private fun LevelMeter(level: String, accent: Color) {
 private fun WeekStrip(template: ProgramTemplate, accent: Color) {
     val colors = DarmixTheme.colors
     val onAccent = onColorFor(accent)
-    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         template.days.forEachIndexed { index, day ->
             val training = day.exercises.isNotEmpty()
             Box(
                 modifier = Modifier
                     .weight(1f)
-                    .height(34.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(if (training) accent else colors.cardHigh),
+                    .height(26.dp)
+                    .clip(CellShape)
+                    .background(if (training) accent else colors.cardRaised),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
                     text = DayLetters[index],
-                    style = MaterialTheme.typography.labelLarge,
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp, fontWeight = FontWeight.Black),
                     color = if (training) onAccent else colors.textTertiary
                 )
             }
         }
-    }
-}
-
-@Composable
-private fun TemplateStat(value: String, label: String, modifier: Modifier = Modifier) {
-    val colors = DarmixTheme.colors
-    Column(modifier = modifier) {
-        Text(text = value, style = DarmixTextStyles.MetricSmall, color = colors.textPrimary)
-        Overline(text = label, color = colors.textTertiary)
     }
 }
 
@@ -570,69 +718,66 @@ private fun TemplateCard(
 ) {
     val colors = DarmixTheme.colors
     val weeklySets = remember(template) { template.weeklySets() }
-    Column(
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(DarmixShapes.Hero)
+            .height(IntrinsicSize.Min)
+            .clip(CardShape)
             .background(colors.card)
-            .drawBehind {
-                drawRect(
-                    brush = Brush.verticalGradient(
-                        listOf(accent.copy(alpha = if (colors.isDark) 0.08f else 0.06f), Color.Transparent),
-                        endY = size.height * 0.45f
-                    )
-                )
-            }
-            .border(1.dp, colors.hairline, DarmixShapes.Hero)
+            .border(1.dp, colors.hairline, CardShape)
             .clickable(role = Role.Button, onClick = onView)
-            .padding(Spacing.lg),
-        verticalArrangement = Arrangement.spacedBy(Spacing.lg)
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
-            Emblem(days = template.trainingDays, accent = accent)
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
-                Text(
-                    text = template.name,
-                    style = MaterialTheme.typography.titleLarge,
-                    color = colors.textPrimary,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-                LevelMeter(level = template.level, accent = accent)
-            }
-        }
-        WeekStrip(template = template, accent = accent)
-        Row(modifier = Modifier.fillMaxWidth()) {
-            TemplateStat(value = "${template.trainingDays}", label = "Días", modifier = Modifier.weight(1f))
-            TemplateStat(value = "$weeklySets", label = "Series / sem", modifier = Modifier.weight(1f))
-            TemplateStat(value = formatTime(template.restSeconds), label = "Descanso", modifier = Modifier.weight(1f))
-        }
-        Text(
-            text = template.summary,
-            style = MaterialTheme.typography.bodySmall,
-            color = colors.textSecondary,
-            maxLines = 3,
-            overflow = TextOverflow.Ellipsis
+        Box(
+            modifier = Modifier
+                .width(4.dp)
+                .fillMaxHeight()
+                .background(accent)
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm + 2.dp)) {
-            DarmixButton(
-                text = "Ver plan",
-                onClick = onView,
-                style = DarmixButtonStyle.Ghost,
-                icon = Icons.Rounded.Visibility,
-                height = 48.dp,
-                haptic = null,
-                modifier = Modifier.weight(1f)
+        Column(modifier = Modifier.padding(start = 14.dp, end = 16.dp, top = 16.dp, bottom = 16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                Emblem(days = template.trainingDays, accent = accent)
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        text = template.name,
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold, fontSize = 17.sp),
+                        color = colors.textPrimary,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    LevelMeter(level = template.level, accent = accent)
+                }
+            }
+            Spacer(Modifier.height(14.dp))
+            WeekStrip(template = template, accent = accent)
+            StatBar(
+                stats = listOf(
+                    Stat("${template.trainingDays}", "DÍAS", colors.textPrimary),
+                    Stat("$weeklySets", "SERIES / SEM", accent),
+                    Stat(formatTime(template.restSeconds), "DESCANSO", colors.textPrimary)
+                ),
+                modifier = Modifier.padding(top = 12.dp)
             )
-            DarmixButton(
-                text = "AGREGAR",
-                onClick = onAdd,
-                icon = Icons.Rounded.Add,
-                height = 48.dp,
-                containerColor = accent,
-                contentColor = onColorFor(accent),
-                modifier = Modifier.weight(1f)
+            Text(
+                text = template.summary,
+                style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.5.sp, lineHeight = 18.sp, fontWeight = FontWeight.SemiBold),
+                color = colors.textSecondary,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 12.dp)
             )
+            Row(
+                modifier = Modifier.padding(top = 14.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                GhostPlate(text = "VER PLAN", icon = Icons.Rounded.Visibility, onClick = onView, modifier = Modifier.weight(1f))
+                AccentPlate(
+                    text = "AGREGAR",
+                    icon = Icons.Rounded.Add,
+                    accent = accent,
+                    onClick = onAdd,
+                    modifier = Modifier.weight(1.2f)
+                )
+            }
         }
     }
 }
@@ -640,39 +785,56 @@ private fun TemplateCard(
 @Composable
 private fun BlankCard(onCreate: () -> Unit) {
     val colors = DarmixTheme.colors
+    val dash = colors.hairlineStrong
+    val bracket = colors.voltText
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(DarmixShapes.Hero)
             .drawBehind {
                 val stroke = 1.5.dp.toPx()
-                drawRoundRect(
-                    color = colors.hairlineStrong,
+                drawRect(
+                    color = dash,
                     topLeft = Offset(stroke / 2f, stroke / 2f),
-                    size = size.copy(width = size.width - stroke, height = size.height - stroke),
-                    cornerRadius = CornerRadius(30.dp.toPx()),
-                    style = Stroke(stroke, pathEffect = PathEffect.dashPathEffect(floatArrayOf(8.dp.toPx(), 6.dp.toPx())))
+                    size = Size(size.width - stroke, size.height - stroke),
+                    style = Stroke(stroke, pathEffect = PathEffect.dashPathEffect(floatArrayOf(7.dp.toPx(), 5.dp.toPx())))
                 )
+                val inset = 4.dp.toPx()
+                val arm = 10.dp.toPx()
+                val w = 1.8.dp.toPx()
+                listOf(
+                    Offset(inset, inset) to Offset(1f, 1f),
+                    Offset(size.width - inset, inset) to Offset(-1f, 1f),
+                    Offset(size.width - inset, size.height - inset) to Offset(-1f, -1f),
+                    Offset(inset, size.height - inset) to Offset(1f, -1f)
+                ).forEach { (p, d) ->
+                    drawLine(bracket, p, Offset(p.x + arm * d.x, p.y), strokeWidth = w)
+                    drawLine(bracket, p, Offset(p.x, p.y + arm * d.y), strokeWidth = w)
+                }
             }
             .clickable(role = Role.Button, onClick = onCreate)
-            .padding(Spacing.lg),
+            .padding(18.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(Spacing.md)
+        horizontalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         Box(
             modifier = Modifier
-                .size(56.dp)
+                .size(52.dp)
                 .clip(EmblemShape)
-                .background(colors.cardHigh),
+                .background(colors.canvasDeep)
+                .border(1.dp, colors.hairlineStrong, EmblemShape),
             contentAlignment = Alignment.Center
         ) {
-            Icon(Icons.Rounded.Add, contentDescription = null, tint = colors.voltText, modifier = Modifier.size(28.dp))
+            Icon(Icons.Rounded.Add, contentDescription = null, tint = colors.voltText, modifier = Modifier.size(26.dp))
         }
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(text = "Desde cero", style = MaterialTheme.typography.titleLarge, color = colors.textPrimary)
+            Text(
+                text = "Desde cero",
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
+                color = colors.textPrimary
+            )
             Text(
                 text = "Un programa en blanco para armarlo a tu manera.",
-                style = MaterialTheme.typography.bodySmall,
+                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
                 color = colors.textSecondary
             )
         }
@@ -685,15 +847,136 @@ private fun EmptyPrograms() {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(DarmixShapes.Hero)
+            .clip(HeroShape)
             .background(colors.card)
-            .border(1.dp, colors.hairline, DarmixShapes.Hero)
-            .padding(Spacing.xl),
-        verticalArrangement = Arrangement.spacedBy(Spacing.xs)
+            .border(1.dp, colors.hairlineStrong, HeroShape)
+            .padding(18.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        Text(text = "Sin programa activo", style = MaterialTheme.typography.titleLarge, color = colors.textPrimary)
-        Text(text = "Elige una plantilla o crea uno desde cero.", style = MaterialTheme.typography.bodySmall, color = colors.textSecondary)
+        Text(text = "SIN PROGRAMA ACTIVO", style = Display.copy(fontSize = 24.sp, lineHeight = 26.sp), color = colors.textPrimary)
+        Text(
+            text = "Elige una plantilla o crea uno desde cero.",
+            style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
+            color = colors.textSecondary
+        )
     }
+}
+
+@Composable
+private fun AccentPlate(
+    text: String,
+    accent: Color,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    icon: ImageVector? = null,
+    enabled: Boolean = true,
+    height: Dp = 44.dp,
+    horizontalPadding: Dp = 16.dp,
+    glowing: Boolean = false
+) {
+    val colors = DarmixTheme.colors
+    val content = if (enabled) onColorFor(accent) else colors.textTertiary
+    val fill = if (enabled) {
+        Brush.verticalGradient(listOf(lerp(accent, Color.White, 0.25f), accent, lerp(accent, Color.Black, 0.12f)))
+    } else {
+        SolidColor(colors.cardHigh)
+    }
+    Row(
+        modifier = modifier
+            .height(height)
+            .then(if (glowing && enabled) Modifier.glow(PlateShape, accent, if (colors.isDark) 0.8f else 0.4f) else Modifier)
+            .clip(PlateShape)
+            .background(fill)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = ripple(),
+                enabled = enabled,
+                role = Role.Button,
+                onClick = onClick
+            )
+            .padding(horizontal = horizontalPadding),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center
+    ) {
+        if (icon != null) {
+            Icon(icon, contentDescription = null, tint = content, modifier = Modifier.size(17.dp))
+            Spacer(Modifier.width(6.dp))
+        }
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelLarge.copy(fontSize = 12.sp, letterSpacing = 1.6.sp, fontWeight = FontWeight.Black),
+            color = content,
+            maxLines = 1
+        )
+    }
+}
+
+@Composable
+private fun GhostPlate(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, icon: ImageVector? = null) {
+    val colors = DarmixTheme.colors
+    Row(
+        modifier = modifier
+            .height(44.dp)
+            .clip(PlateShape)
+            .background(colors.canvasDeep)
+            .border(1.dp, colors.hairlineStrong, PlateShape)
+            .clickable(role = Role.Button, onClick = onClick)
+            .padding(horizontal = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center
+    ) {
+        if (icon != null) {
+            Icon(icon, contentDescription = null, tint = colors.textSecondary, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(8.dp))
+        }
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelLarge.copy(fontSize = 12.sp, letterSpacing = 1.4.sp, fontWeight = FontWeight.ExtraBold),
+            color = colors.textSecondary,
+            maxLines = 1
+        )
+    }
+}
+
+@Composable
+private fun SheetHeader(overline: String, overlineColor: Color, title: String, leading: (@Composable () -> Unit)? = null, below: (@Composable () -> Unit)? = null) {
+    val colors = DarmixTheme.colors
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+        leading?.invoke()
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Box(
+                    modifier = Modifier
+                        .size(width = 12.dp, height = 2.dp)
+                        .background(overlineColor)
+                )
+                Text(
+                    text = overline,
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp, letterSpacing = 2.2.sp),
+                    color = overlineColor
+                )
+            }
+            Text(
+                text = title,
+                style = Display.copy(fontSize = 28.sp, lineHeight = 30.sp),
+                color = colors.textPrimary,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis
+            )
+            below?.invoke()
+        }
+    }
+}
+
+@Composable
+private fun SheetDivider(color: Color) {
+    val colors = DarmixTheme.colors
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(1.dp)
+            .background(Brush.horizontalGradient(listOf(color.copy(alpha = 0.6f), colors.hairline, Color.Transparent)))
+    )
 }
 
 @Composable
@@ -707,31 +990,67 @@ private fun NameSheet(
 ) {
     val colors = DarmixTheme.colors
     var text by rememberSaveable { mutableStateOf(initial) }
+    val interaction = remember { MutableInteractionSource() }
+    val focused by interaction.collectIsFocusedAsState()
+    val border by animateColorAsState(
+        targetValue = if (focused) colors.voltText else colors.hairline,
+        animationSpec = tween(Motion.Quick),
+        label = "name-border"
+    )
     DarmixSheet(onDismiss = onDismiss) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .imePadding()
                 .padding(start = Spacing.screen, end = Spacing.screen, bottom = Spacing.xxl),
-            verticalArrangement = Arrangement.spacedBy(Spacing.lg)
+            verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Overline(text = overline, color = colors.voltText)
-                Text(text = title, style = MaterialTheme.typography.titleLarge, color = colors.textPrimary)
-            }
-            DarmixTextField(value = text, onValueChange = { text = it }, label = "Nombre del programa")
-            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm + 2.dp)) {
-                DarmixButton(
-                    text = "Cancelar",
-                    onClick = onDismiss,
-                    style = DarmixButtonStyle.Ghost,
-                    haptic = null,
-                    modifier = Modifier.width(120.dp)
+            SheetHeader(overline = overline, overlineColor = colors.voltText, title = title)
+            SheetDivider(colors.voltText)
+            Column {
+                Text(
+                    text = "NOMBRE DEL PROGRAMA",
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, letterSpacing = 2.sp),
+                    color = colors.textTertiary,
+                    modifier = Modifier.padding(start = 2.dp, bottom = 6.dp)
                 )
-                DarmixButton(
+                BasicTextField(
+                    value = text,
+                    onValueChange = { text = it },
+                    singleLine = true,
+                    interactionSource = interaction,
+                    textStyle = MaterialTheme.typography.bodyLarge.copy(color = colors.textPrimary, fontWeight = FontWeight.SemiBold),
+                    cursorBrush = SolidColor(colors.voltText),
+                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
+                    modifier = Modifier.fillMaxWidth(),
+                    decorationBox = { inner ->
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 48.dp)
+                                .clip(FieldShape)
+                                .background(colors.canvasDeep)
+                                .border(1.dp, border, FieldShape)
+                                .drawBehind {
+                                    if (focused) drawRect(colors.voltText, size = Size(3.dp.toPx(), size.height))
+                                }
+                                .padding(horizontal = 14.dp, vertical = 13.dp),
+                            contentAlignment = Alignment.CenterStart
+                        ) {
+                            inner()
+                        }
+                    }
+                )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                GhostPlate(text = "CANCELAR", onClick = onDismiss, modifier = Modifier.width(120.dp))
+                AccentPlate(
                     text = confirmLabel,
+                    accent = colors.volt,
                     onClick = { onSave(text.trim()) },
                     enabled = text.isNotBlank(),
+                    height = 48.dp,
+                    glowing = true,
                     modifier = Modifier.weight(1f)
                 )
             }
@@ -754,22 +1073,29 @@ private fun TemplateSheet(
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
                 .padding(start = Spacing.screen, end = Spacing.screen, bottom = Spacing.xxl),
-            verticalArrangement = Arrangement.spacedBy(Spacing.lg)
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
-                Emblem(days = template.trainingDays, accent = accent, size = 64.dp)
-                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
-                    Overline(text = "Plantilla", color = accent)
-                    Text(text = template.name.uppercase(), style = MaterialTheme.typography.headlineMedium, color = colors.textPrimary)
-                    LevelMeter(level = template.level, accent = accent)
-                }
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.xs + 2.dp)) {
-                InfoChip(text = "${template.trainingDays} días", content = colors.textPrimary)
-                InfoChip(text = "$weeklySets series / sem", content = accent)
-                InfoChip(text = "Descanso ${formatTime(template.restSeconds)}", content = colors.tideText)
-            }
-            Text(text = template.summary, style = MaterialTheme.typography.bodyMedium, color = colors.textSecondary)
+            SheetHeader(
+                overline = "PLANTILLA",
+                overlineColor = accent,
+                title = template.name.uppercase(),
+                leading = { Emblem(days = template.trainingDays, accent = accent, size = 64.dp) },
+                below = { LevelMeter(level = template.level, accent = accent) }
+            )
+            StatBar(
+                stats = listOf(
+                    Stat("${template.trainingDays}", "DÍAS", colors.textPrimary),
+                    Stat("$weeklySets", "SERIES / SEM", accent),
+                    Stat(formatTime(template.restSeconds), "DESCANSO", colors.tideText)
+                ),
+                modifier = Modifier.padding(top = 4.dp)
+            )
+            Text(
+                text = template.summary,
+                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold, lineHeight = 20.sp),
+                color = colors.textSecondary
+            )
+            SheetDivider(accent)
 
             template.days.forEachIndexed { index, day ->
                 if (day.exercises.isEmpty()) {
@@ -779,14 +1105,16 @@ private fun TemplateSheet(
                 }
             }
 
-            DarmixButton(
+            AccentPlate(
                 text = "AGREGAR Y ACTIVAR",
-                onClick = onAdd,
                 icon = Icons.Rounded.Add,
-                height = 56.dp,
-                containerColor = accent,
-                contentColor = onColorFor(accent),
-                modifier = Modifier.fillMaxWidth()
+                accent = accent,
+                onClick = onAdd,
+                height = 52.dp,
+                glowing = true,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp)
             )
         }
     }
@@ -795,17 +1123,33 @@ private fun TemplateSheet(
 @Composable
 private fun RestLine(dayLabel: String, title: String) {
     val colors = DarmixTheme.colors
+    val tide = colors.tideText
+    val shape = CutCornerShape(10.dp)
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(DarmixShapes.Control)
-            .background(colors.cardRaised)
-            .padding(horizontal = Spacing.md, vertical = Spacing.sm + 2.dp),
+            .clip(shape)
+            .background(lerp(colors.card, colors.tide, if (colors.isDark) 0.05f else 0.06f))
+            .border(1.dp, tide.copy(alpha = 0.3f), shape)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(Spacing.md)
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text(text = dayLabel, style = MaterialTheme.typography.labelLarge, color = colors.tideText, modifier = Modifier.width(36.dp))
-        Text(text = title, style = MaterialTheme.typography.bodyMedium, color = colors.textSecondary)
+        Text(
+            text = dayLabel,
+            style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp, letterSpacing = 1.6.sp, fontWeight = FontWeight.Black),
+            color = tide,
+            modifier = Modifier.width(34.dp)
+        )
+        Text(
+            text = title,
+            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+            color = colors.textSecondary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f)
+        )
+        ChargingBattery(size = 20.dp, color = tide, bolt = colors.onTide)
     }
 }
 
@@ -813,88 +1157,123 @@ private fun RestLine(dayLabel: String, title: String) {
 private fun PlanDay(dayLabel: String, title: String, exercises: List<TemplateExercise>, accent: Color) {
     val colors = DarmixTheme.colors
     val tide = colors.tideText
-    Column(
+    val onTide = onColorFor(tide)
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(DarmixShapes.Card)
-            .background(colors.cardRaised)
-            .padding(Spacing.md),
-        verticalArrangement = Arrangement.spacedBy(Spacing.sm + 2.dp)
+            .height(IntrinsicSize.Min)
+            .clip(DayCardShape)
+            .background(colors.card)
+            .border(1.dp, colors.hairline, DayCardShape)
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
-            Text(text = dayLabel, style = MaterialTheme.typography.labelLarge, color = accent, modifier = Modifier.width(36.dp))
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleSmall,
-                color = colors.textPrimary,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
-            )
-        }
-        exercises.forEachIndexed { index, exercise ->
-            val grouped = exercise.group != null
-            val previousSame = index > 0 && grouped && exercises[index - 1].group == exercise.group
-            val nextSame = index < exercises.lastIndex && grouped && exercises[index + 1].group == exercise.group
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(Spacing.md)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .width(36.dp)
-                        .height(44.dp)
-                        .drawBehind {
-                            if (grouped) {
-                                val x = size.width / 2f
-                                val w = 2.dp.toPx()
-                                if (previousSame) drawLine(tide.copy(alpha = 0.5f), Offset(x, 0f), Offset(x, size.height / 2f), w)
-                                if (nextSame) drawLine(tide.copy(alpha = 0.5f), Offset(x, size.height / 2f), Offset(x, size.height), w)
-                            }
-                        },
-                    contentAlignment = Alignment.Center
+        Box(
+            modifier = Modifier
+                .width(5.dp)
+                .fillMaxHeight()
+                .background(accent)
+        )
+        Column(
+            modifier = Modifier.padding(start = 12.dp, end = 14.dp, top = 12.dp, bottom = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    text = dayLabel,
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp, letterSpacing = 1.6.sp, fontWeight = FontWeight.Black),
+                    color = accent
+                )
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.ExtraBold),
+                    color = colors.textPrimary,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            exercises.forEach { exercise ->
+                val grouped = exercise.group != null
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    if (grouped) {
-                        Box(
-                            modifier = Modifier
-                                .size(20.dp)
-                                .clip(CircleShape)
-                                .background(tide),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(Icons.Rounded.Repeat, contentDescription = "Superserie", tint = onColorFor(tide), modifier = Modifier.size(12.dp))
+                    Box(modifier = Modifier.width(18.dp), contentAlignment = Alignment.Center) {
+                        if (grouped) {
+                            Box(
+                                modifier = Modifier
+                                    .size(18.dp)
+                                    .clip(CutCornerShape(topEnd = 4.dp, bottomStart = 4.dp))
+                                    .background(tide),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(Icons.Rounded.Repeat, contentDescription = "Superserie", tint = onTide, modifier = Modifier.size(11.dp))
+                            }
+                        } else {
+                            Box(
+                                modifier = Modifier
+                                    .size(6.dp)
+                                    .background(colors.hairlineStrong)
+                            )
                         }
-                    } else {
-                        Box(
-                            modifier = Modifier
-                                .size(6.dp)
-                                .clip(CircleShape)
-                                .background(colors.hairlineStrong)
+                    }
+                    Box(modifier = Modifier.clip(CutCornerShape(7.dp))) {
+                        ExerciseImage(
+                            imageName = remember(exercise.name) { ExerciseCatalog.imageRefFor(exercise.name) },
+                            exerciseName = exercise.name,
+                            size = 44.dp,
+                            animated = false
+                        )
+                    }
+                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(
+                            text = exercise.name,
+                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold, lineHeight = 17.sp),
+                            color = colors.textPrimary,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = "${exercise.sets} × ${exercise.reps}",
+                            style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.ExtraBold),
+                            color = if (grouped) tide else accent
                         )
                     }
                 }
-                ExerciseImage(
-                    imageName = remember(exercise.name) { ExerciseCatalog.imageRefFor(exercise.name) },
-                    exerciseName = exercise.name,
-                    size = 44.dp,
-                    animated = false
-                )
-                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                    Text(
-                        text = exercise.name,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = colors.textPrimary,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Text(
-                        text = "${exercise.sets} × ${exercise.reps}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = if (grouped) tide else accent
-                    )
-                }
             }
         }
+    }
+}
+
+@Composable
+private fun ChargingBattery(size: Dp, color: Color, bolt: Color) {
+    val boltPath = remember {
+        Path().apply {
+            moveTo(11.9f, 9.3f)
+            lineTo(9.2f, 12.4f)
+            lineTo(12.6f, 12.4f)
+            lineTo(10.1f, 15.5f)
+        }
+    }
+    Canvas(modifier = Modifier.size(size)) {
+        val unit = this.size.minDimension / 24f
+        val line = 1.8f * unit
+        drawRoundRect(
+            color = color,
+            topLeft = Offset(2.5f * unit, 7f * unit),
+            size = Size(17f * unit, 10f * unit),
+            cornerRadius = CornerRadius(2f * unit),
+            style = Stroke(line)
+        )
+        drawLine(color, Offset(22f * unit, 10.5f * unit), Offset(22f * unit, 13.5f * unit), strokeWidth = line, cap = StrokeCap.Round)
+        drawRoundRect(
+            color = color,
+            topLeft = Offset(4.4f * unit, 8.9f * unit),
+            size = Size(13.2f * unit, 6.2f * unit),
+            cornerRadius = CornerRadius(0.8f * unit)
+        )
+        val scaled = Path().apply { addPath(boltPath) }
+        scaled.transform(Matrix().apply { scale(unit, unit) })
+        drawPath(scaled, bolt, style = Stroke(1.7f * unit, cap = StrokeCap.Round, join = StrokeJoin.Round))
     }
 }

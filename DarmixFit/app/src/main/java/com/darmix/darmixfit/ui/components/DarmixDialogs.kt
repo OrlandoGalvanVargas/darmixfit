@@ -18,8 +18,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.darmix.darmixfit.ui.common.emphasized
 import com.darmix.darmixfit.ui.theme.DarmixShapes
 import com.darmix.darmixfit.ui.theme.DarmixTheme
 import com.darmix.darmixfit.ui.theme.Spacing
@@ -82,7 +85,7 @@ fun DarmixConfirmDialog(
         },
         text = {
             Text(
-                text = message,
+                text = emphasized(message, SpanStyle(fontWeight = FontWeight.ExtraBold, color = colors.textPrimary)),
                 style = MaterialTheme.typography.bodyMedium,
                 color = colors.textSecondary,
                 textAlign = TextAlign.Center
@@ -94,7 +97,8 @@ fun DarmixConfirmDialog(
                 onClick = onConfirm,
                 containerColor = colors.ember,
                 contentColor = colors.onEmber,
-                height = 48.dp
+                height = 48.dp,
+                haptic = null
             )
         },
         dismissButton = {
