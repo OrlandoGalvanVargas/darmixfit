@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="darmix_canvas">#F3F2EC</color>
-    <color name="darmix_splash">#0E100D</color>
+    <color name="darmix_splash">#0A0C08</color>
     <color name="darmix_volt">#C6FF3D</color>
 </resources>

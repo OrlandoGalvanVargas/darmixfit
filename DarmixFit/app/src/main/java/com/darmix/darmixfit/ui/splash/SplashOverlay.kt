@@ -1,5 +1,6 @@
 package com.darmix.darmixfit.ui.splash
 
+import android.app.Activity
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
@@ -15,66 +16,77 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CutCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.darmix.darmixfit.ui.theme.DarmixPalette
-import com.darmix.darmixfit.ui.theme.DarmixTextStyles
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
+import androidx.compose.ui.unit.sp
+import androidx.core.view.WindowCompat
+import com.darmix.darmixfit.ui.theme.DisplayFamily
 import kotlin.math.PI
+import kotlin.math.cos
 import kotlin.math.pow
 import kotlin.math.sin
 
-const val SPLASH_DURATION_MILLIS = 1750
+const val SPLASH_DURATION_MILLIS = 1800
 
-private val Background = DarmixPalette.Ink900
-private val Steel = Color(0xFFC9CCC4)
-private val SteelShade = Color(0xFF8D9188)
-private val PlateColors = listOf(DarmixPalette.Volt, DarmixPalette.Ink50, DarmixPalette.Tide)
-private val PlateHeights = listOf(112f, 88f, 64f)
-private val PlateWidths = listOf(15f, 12f, 10f)
+private val Background = Color(0xFF0A0C08)
+private val Volt = Color(0xFFC6FF3D)
+private val VoltBright = Color(0xFFDBFF7A)
+private val VoltCore = Color(0xFFF2FFC9)
+private val VoltDeep = Color(0xFF7FAF12)
+private val SegmentOff = Color(0xFF1A1E16)
+private val SegmentEdge = Color(0xFF262B21)
+private val Hairline = Color(0xFF2A2F26)
+private val HairlineStrong = Color(0xFF3A4035)
+private val CoreTop = Color(0xFF1C2312)
+private val CoreBottom = Color(0xFF0B0D09)
+private val TextPrimary = Color(0xFFF4F6F1)
+private val TextSecondary = Color(0xFF9AA095)
+private val TextTertiary = Color(0xFF6B7266)
+
+private const val SEGMENTS = 24
+private const val TICKS = 72
+private const val REACTOR_UNITS = 300f
+private val TagBarShape = CutCornerShape(2.dp)
 
 private fun phase(t: Float, start: Float, end: Float): Float = ((t - start) / (end - start)).coerceIn(0f, 1f)
 
 private fun easeOut(x: Float): Float = 1f - (1f - x).pow(3)
 
-private fun backOut(x: Float): Float {
-    val c1 = 1.9f
-    val c3 = c1 + 1f
-    return 1f + c3 * (x - 1f).pow(3) + c1 * (x - 1f).pow(2)
-}
-
 @Composable
 fun SplashOverlay(modifier: Modifier = Modifier) {
-    val haptic = LocalHapticFeedback.current
     val progress = remember { Animatable(0f) }
 
+    DarkSystemBars()
+
     LaunchedEffect(Unit) {
-        launch {
-            delay((SPLASH_DURATION_MILLIS * 0.62f).toLong())
-            haptic.performHapticFeedback(HapticFeedbackType.Confirm)
-        }
         progress.animateTo(1f, tween(SPLASH_DURATION_MILLIS, easing = LinearEasing))
     }
 
@@ -82,214 +94,325 @@ fun SplashOverlay(modifier: Modifier = Modifier) {
         modifier = modifier
             .fillMaxSize()
             .background(Background)
-            .drawBehind {
-                val t = progress.value
-                val glow = easeOut(phase(t, 0.35f, 0.8f))
-                if (glow > 0f) {
-                    val center = Offset(size.width / 2f, size.height * 0.42f)
-                    val radius = size.width * (0.45f + 0.25f * glow)
-                    drawCircle(
-                        brush = Brush.radialGradient(
-                            listOf(DarmixPalette.Volt.copy(alpha = 0.16f * glow), Color.Transparent),
-                            center = center,
-                            radius = radius
-                        ),
-                        radius = radius,
-                        center = center
-                    )
-                }
-                val stripes = 0.035f * easeOut(phase(t, 0f, 0.3f))
-                val step = 22.dp.toPx()
-                var x = -size.height
-                while (x < size.width) {
-                    drawLine(
-                        color = Color.White.copy(alpha = stripes),
-                        start = Offset(x, size.height),
-                        end = Offset(x + size.height, 0f),
-                        strokeWidth = 1.dp.toPx()
-                    )
-                    x += step
-                }
-            },
-        contentAlignment = Alignment.Center
     ) {
         Column(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalAlignment = Alignment.CenterHorizontally
+            modifier = Modifier.fillMaxSize(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
         ) {
-            Canvas(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(170.dp)
-            ) {
-                drawBarbell(progress.value)
+            Canvas(modifier = Modifier.size(300.dp)) {
+                drawReactor(progress.value)
             }
 
-            Spacer(Modifier.height(28.dp))
+            Spacer(Modifier.height(10.dp))
 
-            Row(verticalAlignment = Alignment.Bottom) {
-                Box(modifier = Modifier.clipToBounds()) {
-                    Text(
-                        text = "DARMIX",
-                        style = MaterialTheme.typography.displayLarge,
-                        color = DarmixPalette.Ink50,
-                        modifier = Modifier.graphicsLayer {
-                            val p = easeOut(phase(progress.value, 0.58f, 0.78f))
-                            translationY = (1f - p) * size.height
-                            alpha = p
-                        }
-                    )
-                }
-                Text(
-                    text = "FIT",
-                    style = MaterialTheme.typography.displayLarge,
-                    color = DarmixPalette.Volt,
-                    modifier = Modifier.graphicsLayer {
-                        val p = phase(progress.value, 0.7f, 0.84f)
-                        val s = 1.8f - 0.8f * backOut(p)
-                        scaleX = s
-                        scaleY = s
-                        alpha = p
-                        rotationZ = -8f * (1f - p)
-                    }
-                )
-            }
+            Wordmark(progress = { progress.value })
 
-            Spacer(Modifier.height(14.dp))
+            Spacer(Modifier.height(6.dp))
 
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(10.dp),
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
                 modifier = Modifier.graphicsLayer {
-                    alpha = easeOut(phase(progress.value, 0.82f, 0.96f))
+                    val p = easeOut(phase(progress.value, 0.8f, 0.95f))
+                    alpha = p
+                    scaleX = 1.12f - 0.12f * p
                 }
             ) {
+                TagBar()
                 Text(
-                    text = "SUPÉRATE CADA DÍA",
-                    style = DarmixTextStyles.Overline,
-                    color = DarmixPalette.Ink300
+                    text = "SIGUE ESFORZÁNDOTE",
+                    style = MaterialTheme.typography.labelMedium.copy(
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        letterSpacing = 5.sp
+                    ),
+                    color = TextSecondary
                 )
-                Box(
-                    modifier = Modifier
-                        .width(64.dp)
-                        .height(3.dp)
-                        .drawBehind {
-                            val p = easeOut(phase(progress.value, 0.86f, 1f))
-                            val w = size.width * p
-                            drawRoundRect(
-                                color = DarmixPalette.Volt,
-                                topLeft = Offset((size.width - w) / 2f, 0f),
-                                size = Size(w, size.height),
-                                cornerRadius = CornerRadius(size.height / 2f)
-                            )
-                        }
-                )
+                TagBar()
             }
         }
 
-        Text(
-            text = "by DARMIXISTA",
-            style = DarmixTextStyles.Overline,
-            color = DarmixPalette.Ink400,
+        Row(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .navigationBarsPadding()
-                .padding(bottom = 28.dp)
-                .graphicsLayer { alpha = phase(progress.value, 0.88f, 1f) }
-        )
+                .padding(bottom = 32.dp)
+                .graphicsLayer { alpha = phase(progress.value, 0.86f, 1f) }
+        ) {
+            val footer = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 10.sp,
+                fontWeight = FontWeight.ExtraBold,
+                letterSpacing = 2.6.sp
+            )
+            Text(text = "POR ", style = footer, color = TextTertiary)
+            Text(text = "DARMIXISTA", style = footer, color = TextSecondary)
+        }
     }
 }
 
-private fun DrawScope.drawBarbell(t: Float) {
-    val cx = size.width / 2f
-    val restY = size.height * 0.62f
-
-    val lift = phase(t, 0.5f, 0.74f)
-    val liftEase = backOut(lift)
-    val cy = restY - 26.dp.toPx() * liftEase
-    val flex = 12.dp.toPx() * sin(PI.toFloat() * lift) * (1f - lift * 0.35f)
-
-    val halfBar = size.width * 0.40f
-    val grow = easeOut(phase(t, 0f, 0.18f))
-    val half = halfBar * grow
-    if (half <= 0f) return
-
-    val endY = cy + flex
-    val bar = Path().apply {
-        moveTo(cx - half, endY)
-        quadraticTo(cx, cy - flex * 0.6f, cx + half, endY)
+@Composable
+private fun DarkSystemBars() {
+    val view = LocalView.current
+    DisposableEffect(view) {
+        val window = (view.context as? Activity)?.window
+        val controller = window?.let { WindowCompat.getInsetsController(it, view) }
+        val previousStatus = controller?.isAppearanceLightStatusBars
+        val previousNavigation = controller?.isAppearanceLightNavigationBars
+        controller?.isAppearanceLightStatusBars = false
+        controller?.isAppearanceLightNavigationBars = false
+        onDispose {
+            if (controller != null) {
+                previousStatus?.let { controller.isAppearanceLightStatusBars = it }
+                previousNavigation?.let { controller.isAppearanceLightNavigationBars = it }
+            }
+        }
     }
-    drawPath(bar, SteelShade, style = Stroke(width = 7.dp.toPx(), cap = StrokeCap.Round))
-    drawPath(bar, Steel, style = Stroke(width = 4.dp.toPx(), cap = StrokeCap.Round))
+}
 
-    val knurl = 1.5.dp.toPx()
-    for (i in -3..3) {
-        if (i == 0) continue
-        val kx = cx + i * 9.dp.toPx()
-        drawLine(SteelShade, Offset(kx, cy + flex * 0.2f - 3.dp.toPx()), Offset(kx, cy + flex * 0.2f + 3.dp.toPx()), knurl)
+@Composable
+private fun TagBar() {
+    Box(
+        modifier = Modifier
+            .width(18.dp)
+            .height(4.dp)
+            .background(HairlineStrong, TagBarShape)
+    )
+}
+
+@Composable
+private fun Wordmark(progress: () -> Float) {
+    val wordStyle = TextStyle(
+        fontFamily = DisplayFamily,
+        fontWeight = FontWeight.Black,
+        fontSize = 60.sp,
+        lineHeight = 60.sp,
+        letterSpacing = 1.sp
+    )
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(100.dp)
+            .drawBehind { drawSlit(progress()) },
+        contentAlignment = Alignment.Center
+    ) {
+        Row(
+            modifier = Modifier.drawWithContent {
+                val open = easeOut(phase(progress(), 0.67f, 0.82f))
+                val inset = size.height / 2f * (1f - open)
+                clipRect(top = inset, bottom = size.height - inset) {
+                    this@drawWithContent.drawContent()
+                }
+            }
+        ) {
+            Text(text = "DARMIX", style = wordStyle, color = TextPrimary)
+            FitText(style = wordStyle, progress = progress)
+        }
+    }
+}
+
+@Composable
+private fun FitText(style: TextStyle, progress: () -> Float) {
+    val p = phase(progress(), 0.74f, 0.86f)
+    Text(
+        text = "FIT",
+        style = style.copy(
+            shadow = Shadow(color = Volt.copy(alpha = 0.5f * p), blurRadius = 36f)
+        ),
+        color = lerp(TextPrimary, Volt, p)
+    )
+}
+
+private fun DrawScope.drawSlit(t: Float) {
+    val grow = easeOut(phase(t, 0.56f, 0.67f))
+    if (t < 0.56f || grow <= 0f) return
+    val open = easeOut(phase(t, 0.67f, 0.82f))
+    val fullWidth = 238.dp.toPx()
+    val width = fullWidth * grow
+    val left = (size.width - width) / 2f
+    val center = size.height / 2f
+    val travel = 38.dp.toPx() * open
+    val thickness = 2.dp.toPx()
+    val topAlpha = 1f - phase(t, 0.82f, 0.95f)
+    drawGlowLine(left, width, center - travel, thickness, topAlpha)
+    drawGlowLine(left, width, center + travel, thickness, 1f)
+}
+
+private fun DrawScope.drawGlowLine(left: Float, width: Float, y: Float, thickness: Float, alpha: Float) {
+    if (alpha <= 0f) return
+    drawRect(
+        color = Volt.copy(alpha = 0.18f * alpha),
+        topLeft = Offset(left - 4.dp.toPx(), y - thickness * 3f),
+        size = Size(width + 8.dp.toPx(), thickness * 6f)
+    )
+    drawRect(
+        color = Volt.copy(alpha = alpha),
+        topLeft = Offset(left, y - thickness / 2f),
+        size = Size(width, thickness)
+    )
+}
+
+private fun DrawScope.drawReactor(t: Float) {
+    val u = size.minDimension / REACTOR_UNITS
+    val c = center
+
+    val glowIn = phase(t, 0.48f, 0.62f)
+    val glowSettle = phase(t, 0.62f, 0.9f)
+    val glowAlpha = if (t < 0.62f) easeOut(glowIn) else 1f - 0.25f * glowSettle
+    val glowScale = if (t < 0.62f) 0.7f + 0.38f * easeOut(glowIn) else 1.08f - 0.08f * glowSettle
+    if (glowAlpha > 0f) {
+        val r = 210f * u * glowScale
+        drawCircle(
+            brush = Brush.radialGradient(
+                0f to Volt.copy(alpha = 0.16f * glowAlpha),
+                0.45f to Volt.copy(alpha = 0.05f * glowAlpha),
+                0.7f to Color.Transparent,
+                center = c,
+                radius = r
+            ),
+            radius = r,
+            center = c
+        )
     }
 
-    val sleeveStart = halfBar * 0.56f
-    val collarAlpha = phase(t, 0.12f, 0.2f)
-    if (collarAlpha > 0f) {
-        for (side in listOf(-1f, 1f)) {
-            val x = cx + side * sleeveStart
-            drawRoundRect(
-                color = Steel.copy(alpha = collarAlpha),
-                topLeft = Offset(x - 4.dp.toPx(), endY - 13.dp.toPx()),
-                size = Size(8.dp.toPx(), 26.dp.toPx()),
-                cornerRadius = CornerRadius(2.dp.toPx())
-            )
+    val bracketP = easeOut(phase(t, 0f, 0.3f))
+    if (bracketP > 0f) {
+        val half = 136f * u * (1.4f - 0.4f * bracketP)
+        val arm = 22f * u
+        val stroke = 2f * u
+        val color = Volt.copy(alpha = bracketP)
+        for (sx in listOf(-1f, 1f)) {
+            for (sy in listOf(-1f, 1f)) {
+                val corner = Offset(c.x + sx * half, c.y + sy * half)
+                drawLine(color, corner, Offset(corner.x - sx * arm, corner.y), stroke, StrokeCap.Square)
+                drawLine(color, corner, Offset(corner.x, corner.y - sy * arm), stroke, StrokeCap.Square)
+            }
         }
     }
 
-    var offset = sleeveStart + 6.dp.toPx()
-    PlateHeights.forEachIndexed { index, heightDp ->
-        val start = 0.16f + index * 0.08f
-        val p = phase(t, start, start + 0.16f)
-        val w = PlateWidths[index].dp.toPx()
-        val h = heightDp.dp.toPx()
-        val target = offset + w / 2f
-        if (p > 0f) {
-            val travel = size.width * 0.7f
-            val eased = backOut(p)
-            for (side in listOf(-1f, 1f)) {
-                val x = cx + side * (target + travel * (1f - eased))
-                val color = PlateColors[index]
-                drawRoundRect(
-                    color = color,
-                    topLeft = Offset(x - w / 2f, endY - h / 2f),
-                    size = Size(w, h),
-                    cornerRadius = CornerRadius(4.dp.toPx())
-                )
-                drawRoundRect(
-                    color = Color.Black.copy(alpha = 0.22f),
-                    topLeft = Offset(x - w / 2f + w * 0.62f, endY - h / 2f + 3.dp.toPx()),
-                    size = Size(w * 0.22f, h - 6.dp.toPx()),
-                    cornerRadius = CornerRadius(2.dp.toPx())
+    val border = easeOut(phase(t, 0f, 0.4f))
+    if (border > 0f) {
+        drawArc(
+            color = HairlineStrong,
+            startAngle = -90f,
+            sweepAngle = 360f * border,
+            useCenter = false,
+            topLeft = Offset(c.x - 128f * u, c.y - 128f * u),
+            size = Size(256f * u, 256f * u),
+            style = Stroke(width = 2f * u)
+        )
+        drawArc(
+            color = Volt.copy(alpha = 0.22f),
+            startAngle = -90f,
+            sweepAngle = 360f * border,
+            useCenter = false,
+            topLeft = Offset(c.x - 132f * u, c.y - 132f * u),
+            size = Size(264f * u, 264f * u),
+            style = Stroke(width = 1f * u)
+        )
+    }
+
+    val tickP = easeOut(phase(t, 0f, 0.42f))
+    if (tickP > 0f) {
+        rotate(degrees = -40f * (1f - tickP), pivot = c) {
+            for (k in 0 until TICKS) {
+                val angle = (k * 5f - 90f) * PI.toFloat() / 180f
+                val major = k % 6 == 0
+                val inner = 108f * u
+                val outer = inner + (if (major) 9f else 4f) * u
+                val color = if (k % 18 == 0) Volt else HairlineStrong
+                drawLine(
+                    color = color.copy(alpha = tickP),
+                    start = Offset(c.x + inner * cos(angle), c.y + inner * sin(angle)),
+                    end = Offset(c.x + outer * cos(angle), c.y + outer * sin(angle)),
+                    strokeWidth = (if (major) 1.6f else 1f) * u
                 )
             }
         }
-        offset += w + 3.dp.toPx()
     }
 
-    val clamp = phase(t, 0.44f, 0.52f)
-    if (clamp > 0f) {
-        for (side in listOf(-1f, 1f)) {
-            val x = cx + side * (offset + 3.dp.toPx())
-            drawRoundRect(
-                color = Steel.copy(alpha = clamp),
-                topLeft = Offset(x - 3.dp.toPx(), endY - 9.dp.toPx() * clamp),
-                size = Size(6.dp.toPx(), 18.dp.toPx() * clamp),
-                cornerRadius = CornerRadius(2.dp.toPx())
+    drawCircle(Hairline, radius = 74f * u, center = c, style = Stroke(1f * u))
+    drawCircle(Hairline, radius = 102f * u, center = c, style = Stroke(1f * u))
+
+    val ringRadius = 90f * u
+    val ringTopLeft = Offset(c.x - ringRadius, c.y - ringRadius)
+    val ringSize = Size(ringRadius * 2f, ringRadius * 2f)
+    val litBrush = Brush.linearGradient(
+        listOf(VoltBright, Volt),
+        start = Offset(c.x - ringRadius, c.y - ringRadius),
+        end = Offset(c.x + ringRadius, c.y + ringRadius)
+    )
+    for (i in 0 until SEGMENTS) {
+        val start = i * 15f + 2f - 90f
+        val sweep = 11f
+        drawArc(SegmentEdge, start - 0.3f, sweep + 0.6f, false, ringTopLeft, ringSize, style = Stroke(width = 17f * u))
+        drawArc(SegmentOff, start, sweep, false, ringTopLeft, ringSize, style = Stroke(width = 15f * u))
+        val lit = easeOut(phase(t, 0.12f + i * 0.0145f, 0.17f + i * 0.0145f))
+        if (lit > 0f) {
+            drawArc(Volt.copy(alpha = 0.22f * lit), start - 1f, sweep + 2f, false, ringTopLeft, ringSize, style = Stroke(width = 24f * u))
+            drawArc(litBrush, start, sweep, false, ringTopLeft, ringSize, alpha = lit, style = Stroke(width = 16f * u))
+        }
+    }
+
+    if (t >= 0.5f) {
+        val shock = phase(t, 0.5f, 0.8f)
+        val alpha = if (t < 0.52f) 0.9f * phase(t, 0.5f, 0.52f) else 0.9f * (1f - shock)
+        if (alpha > 0f) {
+            drawCircle(
+                color = Volt.copy(alpha = alpha),
+                radius = 90f * u * (1f + 0.9f * easeOut(shock)),
+                center = c,
+                style = Stroke(width = 2f * u)
             )
         }
     }
 
-    val tipStart = cx + halfBar
-    if (grow >= 1f) {
-        for (side in listOf(-1f, 1f)) {
-            drawCircle(Steel, radius = 3.5.dp.toPx(), center = Offset(cx + side * (tipStart - cx), endY))
+    drawCircle(Hairline, radius = 36f * u, center = c)
+    drawCircle(
+        brush = Brush.radialGradient(
+            listOf(CoreTop, CoreBottom),
+            center = Offset(c.x, c.y - 7f * u),
+            radius = 35f * u
+        ),
+        radius = 35f * u,
+        center = c
+    )
+
+    val coreIn = phase(t, 0.47f, 0.55f)
+    if (coreIn > 0f) {
+        val coreScale = if (t < 0.55f) 0.2f + 1.15f * easeOut(coreIn) else 1.35f - 0.35f * easeOut(phase(t, 0.55f, 0.7f))
+        withTransform({ scale(coreScale, coreScale, c) }) {
+            drawCircle(
+                brush = Brush.radialGradient(
+                    0f to VoltCore,
+                    0.55f to Volt,
+                    1f to VoltDeep,
+                    center = c,
+                    radius = 13f * u
+                ),
+                radius = 13f * u,
+                center = c,
+                alpha = coreIn
+            )
         }
+    }
+
+    val flash = when {
+        t < 0.5f -> 0f
+        t < 0.53f -> phase(t, 0.5f, 0.53f)
+        else -> 1f - phase(t, 0.53f, 0.72f)
+    }
+    if (flash > 0f) {
+        drawCircle(
+            brush = Brush.radialGradient(
+                0f to Color(0xFFE6FFAA).copy(alpha = 0.9f * flash),
+                0.45f to Volt.copy(alpha = 0.25f * flash),
+                0.7f to Color.Transparent,
+                center = c,
+                radius = 60f * u
+            ),
+            radius = 60f * u,
+            center = c
+        )
     }
 }
