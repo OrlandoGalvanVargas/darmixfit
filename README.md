@@ -115,9 +115,9 @@ GIF a cualquier ejercicio.
 </td>
 <td width="50%" valign="top">
 
-### 🌗 Tema claro y oscuro
-Un sistema de diseño propio (tinta, volt y tide) con tipografía **Big Shoulders + Manrope**. Cambia de
-tema con un toque.
+### 🎨 Tema y color a tu gusto
+Diseño propio estilo HUD con tipografía **Big Shoulders + Manrope**. Elige **tema claro u oscuro**,
+uno de **4 colores de acento** (verde, cian, ámbar o violeta) y si quieres vibración al girar el reactor.
 
 </td>
 </tr>
@@ -125,8 +125,9 @@ tema con un toque.
 <td width="50%" valign="top">
 
 ### 🧩 Configuración guiada
-Una pantalla de permisos paso a paso que detecta lo que ya activaste y te dice exactamente qué tocar,
-incluso en teléfonos **Xiaomi / HyperOS**.
+Una pantalla de permisos paso a paso que detecta lo que ya activaste y te dice exactamente qué tocar.
+Funciona de **Android 8 a 16** y tiene instrucciones para **Xiaomi, Samsung, Huawei, Honor, OPPO,
+realme, OnePlus, vivo, ASUS, Tecno e Infinix**.
 
 </td>
 <td width="50%" valign="top">
@@ -153,7 +154,7 @@ toque.
 </td>
 <td align="center" width="50%">
 <img src="docs/gifs/splash.gif" alt="Splash animado" width="100%" /><br />
-<sub><b>Carga la barra</b></sub>
+<sub><b>Enciende el reactor</b></sub>
 </td>
 </tr>
 </table>
@@ -219,19 +220,26 @@ que el descanso suene a tiempo.
 | Permiso | Para qué sirve | Tipo |
 | --- | --- | :---: |
 | 🔔 **Notificaciones** | Cuenta regresiva, aviso de fin de descanso y serie en la pantalla de bloqueo | Necesario |
-| ⏰ **Alarmas exactas** | Que el aviso llegue justo en 0:00, incluso con el teléfono en reposo | Necesario |
+| ⏰ **Alarmas exactas** | Que el aviso llegue justo en 0:00, incluso con el teléfono en reposo. Solo Android 12 o superior | Necesario |
 | 🔋 **Batería sin restricciones** | Evita que Android pause el temporizador para ahorrar energía | Recomendado |
-| 🚀 **Inicio automático** | Solo Xiaomi / Redmi / POCO: evita que HyperOS cierre la app | Recomendado |
+| 🚀 **Segundo plano de tu marca** | Solo en marcas que cierran apps por su cuenta (Xiaomi, Samsung, Huawei, OPPO, vivo…) | Recomendado |
 | 📦 **Instalar apps** | Solo se pide al instalar una actualización | Al actualizar |
 
 <details>
-<summary><b>📱 Instrucciones para Xiaomi / HyperOS</b></summary>
+<summary><b>📱 Instrucciones por marca</b></summary>
 <br />
 
-1. En la configuración guiada, toca **Abrir inicio automático**.
-2. En la lista, busca **DarmixFit** (puedes usar la lupa de arriba).
-3. Activa el interruptor junto a DarmixFit.
-4. Regresa a la app: el paso se marca solo.
+En la configuración guiada, el botón de este paso abre directo el ajuste de tu marca. Si tu teléfono
+no lo permite, abre la información de la app y te muestra los pasos generales.
+
+| Marca | Qué activar |
+| --- | --- |
+| **Xiaomi / Redmi / POCO** | **Inicio automático** → activa DarmixFit. El paso se marca solo |
+| **Samsung** | Batería → **Límites de uso en segundo plano** → **Apps que nunca se suspenden** → agrega DarmixFit |
+| **Huawei / Honor** | **Inicio de apps** → desactiva *Administrar automáticamente* y deja las tres opciones activas |
+| **OPPO / realme / OnePlus** | **Inicio automático** → activa DarmixFit. En Batería, activa *Permitir actividad en segundo plano* |
+| **vivo / iQOO** | **Segundo plano** → activa DarmixFit. Si aparece, activa *Alto consumo en segundo plano* |
+| **ASUS / Tecno / Infinix / itel** | **Inicio automático** → activa DarmixFit |
 
 Extra: en **Recientes**, mantén presionada DarmixFit y toca el **candado** para que el sistema no la
 cierre.
@@ -336,6 +344,8 @@ DarmixFit/app/src/main/java/com/darmix/darmixfit/
     ├── edit/      Editor de rutina
     ├── programs/  Programas
     ├── permissions/  Configuración guiada
+    ├── settings/  Tema, color de acento y vibración
+    ├── common/    Toasts y textos con énfasis
     ├── splash/    Splash animado
     ├── update/    Aviso de actualización
     ├── components/  Componentes del sistema de diseño
@@ -372,6 +382,7 @@ DarmixFit/app/src/main/java/com/darmix/darmixfit/
 
 | Versión | Fecha | Resumen |
 | --- | --- | --- |
+| **v2.0** | 2026-11-07 | Rediseño completo estilo HUD en todas las pantallas, 4 colores de acento, ajustes de tema y vibración, splash nuevo y configuración guiada para Android 8 a 16 y las principales marcas. |
 | **v1.0** | 2026-10-14 | Lanzamiento: ruta del día, descanso automático, serie desde la pantalla de bloqueo, 7 programas, 41 ejercicios animados, historial, tema claro/oscuro y actualizaciones dentro de la app. |
 
 <br />
@@ -395,7 +406,7 @@ fines comerciales sin autorización del autor.
 
 **Hecho con 💚 por [Darmixista](https://darmixista.dev)**
 
-<sub>Supérate cada día.</sub>
+<sub>Sigue esforzándote.</sub>
 
 <sub>[Página oficial](https://darmixista.dev/darmixfit/) · [Descargas](https://github.com/OrlandoGalvanVargas/darmixfit/releases) · [Reportar un bug](https://github.com/OrlandoGalvanVargas/darmixfit/issues)</sub>
 
